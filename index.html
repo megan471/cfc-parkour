@@ -1,0 +1,1382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>CFC Parkour</title>
+<!-- Firebase CDN (no build step needed) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<style>
+:root{--green:#16a34a;--red:#dc2626;--grey:#6b7280;--blue:#2563eb;--gold:#f59e0b;--bg:#f1f5f9;--card:#fff;--text:#1e293b;--sub:#64748b;--border:#e2e8f0;--radius:12px;--shadow:0 2px 12px rgba(0,0,0,.08)}
+*{box-sizing:border-box;margin:0;padding:0;font-family:'Segoe UI',sans-serif}
+body{background:var(--bg);color:var(--text);min-height:100vh}
+.hidden{display:none!important}
+#loadingScreen{min-height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;background:linear-gradient(135deg,#0f172a,#1e3a5f,#2563eb)}
+.spinner{width:44px;height:44px;border:4px solid rgba(255,255,255,.2);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-text{color:rgba(255,255,255,.8);font-size:.9rem;font-weight:600}
+#loginScreen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;background:linear-gradient(135deg,#0f172a,#1e3a5f,#2563eb)}
+.login-card{background:#fff;border-radius:20px;padding:36px 28px;width:100%;max-width:380px;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,.25)}
+.login-logo{font-size:2rem;font-weight:900;color:#2563eb;letter-spacing:2px}
+.login-sub{color:var(--sub);margin:4px 0;font-size:.85rem;font-weight:600;letter-spacing:1px;text-transform:uppercase}
+.login-tagline{color:#94a3b8;font-size:.78rem;margin-bottom:24px}
+.user-select{display:grid;gap:8px;margin-bottom:16px}
+.user-btn{padding:12px 14px;border:2px solid var(--border);border-radius:12px;background:#f8fafc;cursor:pointer;font-size:.95rem;font-weight:600;transition:.2s;text-align:left;display:flex;align-items:center;gap:10px;width:100%}
+.user-btn:hover{border-color:#2563eb;background:#eff6ff}
+.avatar{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1rem;font-weight:700;color:#fff;flex-shrink:0}
+.pin-label{font-size:.88rem;color:var(--sub);margin-bottom:10px}
+.pin-display{display:flex;gap:10px;justify-content:center;margin-bottom:16px}
+.pin-dot{width:16px;height:16px;border-radius:50%;border:2px solid var(--border);background:#f1f5f9;transition:.2s}
+.pin-dot.filled{background:#2563eb;border-color:#2563eb}
+.pin-pad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.pin-key{padding:15px;border:none;border-radius:10px;background:#f1f5f9;font-size:1.2rem;font-weight:700;cursor:pointer}
+.pin-key:active{background:#dbeafe;transform:scale(.95)}
+.pin-key.del{background:#fee2e2;color:#dc2626}
+.login-err{color:#dc2626;font-size:.83rem;margin-top:8px;min-height:18px}
+#app{min-height:100vh;display:flex;flex-direction:column}
+.topbar{background:linear-gradient(90deg,#0f172a,#2563eb);color:#fff;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+.topbar-logo{font-weight:900;font-size:1.1rem}
+.topbar-user{font-size:.75rem;opacity:.8;margin-top:2px}
+.logout-btn{background:rgba(255,255,255,.15);border:none;color:#fff;padding:7px 13px;border-radius:8px;cursor:pointer;font-size:.82rem;font-weight:600}
+.sync-indicator{font-size:.7rem;padding:3px 8px;border-radius:20px;font-weight:700;margin-left:8px}
+.sync-ok{background:rgba(22,163,74,.3);color:#86efac}
+.sync-err{background:rgba(220,38,38,.3);color:#fca5a5}
+.sync-pending{background:rgba(245,158,11,.3);color:#fcd34d}
+.pg-bar{background:#0f172a;padding:10px 16px;overflow-x:auto;display:flex;gap:8px;scrollbar-width:none}
+.pg-bar::-webkit-scrollbar{display:none}
+.pg-chip{padding:7px 14px;border-radius:20px;font-size:.8rem;font-weight:700;cursor:pointer;white-space:nowrap;border:2px solid transparent;color:rgba(255,255,255,.5)}
+.pg-chip.active{color:#fff;border-color:currentColor}
+.nav-tabs{display:flex;background:#1e3a5f;overflow-x:auto;scrollbar-width:none}
+.nav-tabs::-webkit-scrollbar{display:none}
+.nav-tab{padding:11px 16px;color:rgba(255,255,255,.6);font-size:.82rem;font-weight:600;cursor:pointer;white-space:nowrap;border-bottom:3px solid transparent}
+.nav-tab.active{color:#fff;border-bottom-color:#f59e0b}
+.content{flex:1;padding:16px;max-width:960px;margin:0 auto;width:100%}
+.card{background:var(--card);border-radius:var(--radius);padding:16px;margin-bottom:14px;box-shadow:var(--shadow)}
+.card-title{font-size:.95rem;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:7px}
+.stat-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:14px}
+.stat-box{background:var(--card);border-radius:var(--radius);padding:14px;text-align:center;box-shadow:var(--shadow)}
+.stat-num{font-size:1.8rem;font-weight:900}
+.stat-label{font-size:.75rem;color:var(--sub);margin-top:2px}
+.stat-box.green .stat-num{color:var(--green)}
+.stat-box.red .stat-num{color:var(--red)}
+.stat-box.blue .stat-num{color:var(--blue)}
+.stat-box.gold .stat-num{color:var(--gold)}
+.search-bar{width:100%;padding:10px 13px;border:1.5px solid var(--border);border-radius:10px;font-size:.92rem;margin-bottom:12px;outline:none}
+.search-bar:focus{border-color:#2563eb}
+.student-row{display:flex;align-items:flex-start;gap:10px;padding:12px 0;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.student-row:last-child{border-bottom:none}
+.student-name{font-weight:700;font-size:.95rem}
+.att-btns{display:flex;gap:7px;margin-left:auto}
+.att-btn{padding:10px 18px;border:none;border-radius:8px;font-weight:700;font-size:.82rem;cursor:pointer;opacity:.4}
+.att-btn.active{opacity:1}
+.att-btn.present{background:#dcfce7;color:var(--green)}
+.att-btn.absent{background:#fee2e2;color:var(--red)}
+.att-btn.present.active{background:var(--green);color:#fff}
+.att-btn.absent.active{background:var(--red);color:#fff}
+.notes-input{width:100%;padding:6px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:.8rem;margin-top:5px;outline:none}
+.badge{font-size:.7rem;padding:2px 7px;border-radius:20px;font-weight:700;display:inline-block}
+.badge.green{background:#dcfce7;color:var(--green)}
+.badge.red{background:#fee2e2;color:var(--red)}
+.badge.grey{background:#f1f5f9;color:var(--grey)}
+.badge.blue{background:#eff6ff;color:#2563eb}
+.form-row{display:flex;flex-direction:column;gap:5px;margin-bottom:12px}
+.form-label{font-size:.82rem;font-weight:700;color:var(--sub)}
+.form-input,.form-select{padding:10px 12px;border:1.5px solid var(--border);border-radius:9px;font-size:.92rem;outline:none;width:100%}
+.form-input:focus,.form-select:focus{border-color:#2563eb}
+.btn{padding:11px 20px;border:none;border-radius:9px;font-weight:700;font-size:.88rem;cursor:pointer}
+.btn-primary{background:#2563eb;color:#fff}
+.btn-danger{background:#fee2e2;color:#dc2626}
+.btn-success{background:#dcfce7;color:#16a34a}
+.btn-gold{background:#fef3c7;color:#d97706}
+.btn-sm{padding:6px 11px;font-size:.77rem}
+.table-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:.83rem}
+th{background:#f1f5f9;padding:9px 11px;text-align:left;font-weight:700;color:var(--sub);white-space:nowrap}
+td{padding:9px 11px;border-bottom:1px solid var(--border)}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#f8fafc}
+.today-header{background:linear-gradient(135deg,#0f172a,#2563eb);color:#fff;border-radius:var(--radius);padding:16px;margin-bottom:14px}
+.today-date{font-size:1.3rem;font-weight:900}
+.today-sub{opacity:.75;font-size:.85rem;margin-top:2px}
+.shift-slot-btn{padding:13px 10px;border:2px solid var(--border);border-radius:11px;background:#f8fafc;cursor:pointer;text-align:center;font-size:.85rem;width:100%}
+.shift-slot-btn.selected{border-color:#2563eb;background:#eff6ff}
+.pg-section-header{display:flex;align-items:center;gap:10px;margin-bottom:14px;padding:12px 14px;border-radius:10px;color:#fff;font-weight:800;font-size:1rem}
+.week-day{border-radius:10px;padding:13px;border:2px solid var(--border);margin-bottom:8px}
+.week-day.has-shift{border-color:#2563eb;background:#eff6ff}
+.week-day.today-day{border-color:#f59e0b;background:#fffbeb}
+.week-day-name{font-weight:800;font-size:.92rem}
+.week-day-info{font-size:.82rem;color:var(--sub);margin-top:3px}
+.progress-bar{height:7px;background:#e2e8f0;border-radius:99px;overflow:hidden;margin-top:5px}
+.progress-fill{height:100%;border-radius:99px}
+.any-day-notice{background:#fffbeb;border:1.5px solid #f59e0b;border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:.83rem;color:#92400e;font-weight:600}
+.offline-banner{background:#dc2626;color:#fff;text-align:center;padding:8px;font-size:.82rem;font-weight:700}
+@media(min-width:600px){.stat-grid{grid-template-columns:repeat(4,1fr)}.student-row{flex-wrap:nowrap}.att-btns{margin-left:auto;flex-shrink:0}}
+</style>
+</head>
+<body>
+
+<!-- Loading screen shown while Firebase connects -->
+<div id="loadingScreen">
+  <div class="spinner"></div>
+  <div class="loading-text">Connecting to CFC Parkour...</div>
+</div>
+
+<div id="loginScreen" class="hidden">
+  <div class="login-card">
+    <div class="login-logo">&#127939; CFC</div>
+    <div class="login-sub">Parkour</div>
+    <div class="login-tagline">Coaching For Champions &middot; Attendance System</div>
+    <div id="userSelect">
+      <div style="font-size:.83rem;color:var(--sub);margin-bottom:10px;font-weight:600">SELECT YOUR NAME</div>
+      <div class="user-select" id="userList"></div>
+    </div>
+    <div class="hidden" id="pinSection">
+      <div class="pin-label" id="pinLabel">Enter your 4-digit PIN</div>
+      <div class="pin-display">
+        <div class="pin-dot" id="d0"></div><div class="pin-dot" id="d1"></div>
+        <div class="pin-dot" id="d2"></div><div class="pin-dot" id="d3"></div>
+      </div>
+      <div class="pin-pad">
+        <button class="pin-key" onclick="pinPress('1')">1</button><button class="pin-key" onclick="pinPress('2')">2</button><button class="pin-key" onclick="pinPress('3')">3</button>
+        <button class="pin-key" onclick="pinPress('4')">4</button><button class="pin-key" onclick="pinPress('5')">5</button><button class="pin-key" onclick="pinPress('6')">6</button>
+        <button class="pin-key" onclick="pinPress('7')">7</button><button class="pin-key" onclick="pinPress('8')">8</button><button class="pin-key" onclick="pinPress('9')">9</button>
+        <button class="pin-key" onclick="pinBack()">&#8592;</button><button class="pin-key" onclick="pinPress('0')">0</button><button class="pin-key del" onclick="pinClear()">&#10005;</button>
+      </div>
+      <div class="login-err" id="loginErr"></div>
+      <button class="btn" style="width:100%;margin-top:12px;background:#f1f5f9" onclick="goBack()">&#8592; Back</button>
+    </div>
+  </div>
+</div>
+
+<div id="app" class="hidden">
+  <div id="offlineBanner" class="offline-banner hidden">⚠️ Offline — changes will sync when connection is restored</div>
+  <div class="topbar">
+    <div><div class="topbar-logo">&#127939; CFC Parkour</div><div class="topbar-user" id="topbarUser"></div></div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <span id="syncIndicator" class="sync-indicator sync-ok">● Live</span>
+      <button class="logout-btn" onclick="logout()">Logout</button>
+    </div>
+  </div>
+  <div class="pg-bar hidden" id="pgBar"></div>
+  <div class="nav-tabs" id="navTabs"></div>
+  <div class="content" id="mainContent"></div>
+</div>
+
+<script>
+// ─── FIREBASE INIT ────────────────────────────────────────────────────────────
+var firebaseConfig = {
+  apiKey: "AIzaSyDcgrBicdsIgH8_PgnhVRdMO9E9UFlpJ1A",
+  authDomain: "cfc-parkour.firebaseapp.com",
+  databaseURL: "https://cfc-parkour-default-rtdb.firebaseio.com",
+  projectId: "cfc-parkour",
+  storageBucket: "cfc-parkour.firebasestorage.app",
+  messagingSenderId: "1094731390943",
+  appId: "1:1094731390943:web:263f40c341e5233b5cee6a"
+};
+firebase.initializeApp(firebaseConfig);
+var fbdb = firebase.database();
+
+// ─── CONSTANTS ────────────────────────────────────────────────────────────────
+var USERS = {
+  amanda:{name:'Amanda',role:'admin',pin:'0000',avatar:'👑',color:'#7c3aed'},
+  jayden:{name:'Jayden',role:'coach',pin:'1111',avatar:'🏃',color:'#059669'},
+  mike:  {name:'Mike',  role:'coach',pin:'2222',avatar:'🏃',color:'#0284c7'},
+  rob:   {name:'Rob',   role:'coach',pin:'3333',avatar:'🏃',color:'#d97706'},
+  jared: {name:'Jared', role:'coach',pin:'4444',avatar:'🏃',color:'#db2777'},
+  john:  {name:'John',  role:'coach',pin:'5555',avatar:'🏃',color:'#7c3aed'},
+  rooney:{name:'Rooney',role:'coach',pin:'6666',avatar:'🏃',color:'#dc2626'}
+};
+var COACH_RATES = {jayden:100,mike:350,rob:100,jared:100,john:100,rooney:100};
+var PLAYGROUPS = [
+  {id:'aisj',    label:'AISJ',            color:'#2563eb',emoji:'🏫',classifierLabel:'Grade'},
+  {id:'gymnat',  label:'Gymnat',          color:'#059669',emoji:'🤸',classifierLabel:'Age'},
+  {id:'personal',label:'Personal Classes',color:'#7c3aed',emoji:'🧍',classifierLabel:'Age',isPersonal:true},
+  {id:'ninjas',  label:"Ninja's",         color:'#dc2626',emoji:'🥷',classifierLabel:'Age'},
+  {id:'lninjas', label:"Little Ninja's",  color:'#f59e0b',emoji:'🌟',classifierLabel:'Age'},
+  {id:'apex',    label:'Apex',            color:'#0891b2',emoji:'⚡',classifierLabel:'Age'}
+];
+var ANY_DAY_GROUPS = ['ninjas','lninjas','apex'];
+var ALL_SLOTS = {
+  aisj:[
+    {day:'Monday',start:'15:00',end:'16:00',label:'3:00pm - 4:00pm'},
+    {day:'Tuesday',start:'15:00',end:'16:00',label:'3:00pm - 4:00pm'},
+    {day:'Wednesday',start:'13:30',end:'15:00',label:'1:30pm - 3:00pm'},
+    {day:'Friday',start:'15:00',end:'16:00',label:'3:00pm - 4:00pm'}
+  ],
+  gymnat:[
+    {day:'Tuesday',start:'17:00',end:'18:00',label:'5:00pm - 6:00pm'},
+    {day:'Thursday',start:'17:00',end:'18:00',label:'5:00pm - 6:00pm'}
+  ],
+  ninjas:[
+    {day:'Monday',start:'16:00',end:'17:00',label:'4:00pm - 5:00pm'},
+    {day:'Tuesday',start:'15:15',end:'16:15',label:'3:15pm - 4:15pm'},
+    {day:'Wednesday',start:'16:00',end:'17:00',label:'4:00pm - 5:00pm'},
+    {day:'Thursday',start:'15:15',end:'16:15',label:'3:15pm - 4:15pm'},
+    {day:'Friday',start:'15:00',end:'16:00',label:'3:00pm - 4:00pm'},
+    {day:'Saturday',start:'10:00',end:'11:00',label:'10:00am - 11:00am'},
+    {day:'Sunday',start:'10:00',end:'11:00',label:'10:00am - 11:00am'}
+  ],
+  lninjas:[
+    {day:'Monday',start:'15:15',end:'16:15',label:'3:15pm - 4:15pm'},
+    {day:'Tuesday',start:'16:15',end:'17:00',label:'4:15pm - 5:00pm'},
+    {day:'Wednesday',start:'15:15',end:'16:00',label:'3:15pm - 4:00pm'},
+    {day:'Thursday',start:'16:15',end:'17:00',label:'4:15pm - 5:00pm'},
+    {day:'Saturday',start:'09:15',end:'10:00',label:'9:15am - 10:00am'},
+    {day:'Sunday',start:'09:15',end:'10:00',label:'9:15am - 10:00am'}
+  ],
+  apex:[
+    {day:'Monday',start:'17:00',end:'18:00',label:'5:00pm - 6:00pm'},
+    {day:'Tuesday',start:'17:00',end:'18:00',label:'5:00pm - 6:00pm'},
+    {day:'Wednesday',start:'17:00',end:'18:00',label:'5:00pm - 6:00pm'},
+    {day:'Thursday',start:'17:00',end:'18:00',label:'5:00pm - 6:00pm'},
+    {day:'Saturday',start:'11:00',end:'12:00',label:'11:00am - 12:00pm'},
+    {day:'Sunday',start:'11:00',end:'12:00',label:'11:00am - 12:00pm'}
+  ],
+  personal:[
+    {day:'Monday',start:'',end:'',label:'Manual'},{day:'Tuesday',start:'',end:'',label:'Manual'},
+    {day:'Wednesday',start:'',end:'',label:'Manual'},{day:'Thursday',start:'',end:'',label:'Manual'},
+    {day:'Friday',start:'',end:'',label:'Manual'},{day:'Saturday',start:'',end:'',label:'Manual'},
+    {day:'Sunday',start:'',end:'',label:'Manual'}
+  ]
+};
+var PG_DAYS = {
+  aisj:['Monday','Tuesday','Wednesday','Friday'],
+  gymnat:['Tuesday','Thursday'],
+  personal:['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'],
+  ninjas:['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'],
+  lninjas:['Monday','Tuesday','Wednesday','Thursday','Saturday','Sunday'],
+  apex:['Monday','Tuesday','Wednesday','Thursday','Saturday','Sunday']
+};
+
+// ─── MASTER STUDENTS ──────────────────────────────────────────────────────────
+var MASTER_STUDENTS = (function(){
+  var list=[];
+  [['s1','Suleiman','Alavi','KG','Monday'],['s2','Noah','Ayuk','KG','Monday'],
+   ['s3','Henry','Darenborn','KG','Monday'],['s4','Sebastian','French','KG','Monday'],
+   ['s5','Robert','Khan','KG','Monday'],['s6','Ainoa','Hoegsbro Palomino Larsen','KG','Monday'],
+   ['s7','Cayden','Pienaar','KG','Monday'],['s8','Ijae','Shin','KG','Monday'],
+   ['s9','Kerim','Silivrili','KG','Monday'],['s10','Zach','Suplick-Hall','KG','Monday'],
+   ['s11','Laila','Zaki','KG','Monday'],['s12','Madeline','Aguirre','Grade 1','Tuesday'],
+   ['s13','Jeremiah','Ayuk','Grade 1','Tuesday'],['s14','Ayla','El Tannir','Grade 1','Tuesday'],
+   ['s15','Joao Pedro','Martins Narcizo','Grade 2','Tuesday'],
+   ['s16','Jules','Hiner','Grade 3','Wednesday'],['s17','Manolo','Kabila','Grade 3','Wednesday'],
+   ['s18','Sandor','Runyon Zaur','Grade 4','Wednesday'],['s19','Shahzain','Yawar','Grade 4','Wednesday'],
+   ['s20','Zurain','Yawar','Grade 4','Wednesday'],
+   ['s21','Luca','Beraldo De Stefano','Grade 6','Friday'],
+   ['s22','Albert','Runyon Zaur','Grade 6','Friday'],
+   ['s23','Pedro Henrique','Silva Ribeiro','Grade 6','Friday']
+  ].forEach(function(r){list.push({id:r[0],first:r[1],last:r[2],playgroup:'aisj',classifier:r[3],day:r[4],active:true});});
+  [['g1','Allan','Muir','18+','Tuesday'],['g2','Atish','Ratangee','18+','Tuesday'],['g3','Heidi','Engelbrecht','18+','Tuesday'],
+   ['g4','Allan','Muir','18+','Thursday'],['g5','Atish','Ratangee','18+','Thursday'],['g6','Heidi','Engelbrecht','18+','Thursday']
+  ].forEach(function(r){list.push({id:r[0],first:r[1],last:r[2],playgroup:'gymnat',classifier:r[3],day:r[4],active:true});});
+  [['Kayaan','Ratangee'],['Joshua','Ackerman'],['Harry','Votin'],['Jessie',''],['Cade',''],
+   ['Samuel','Feigin'],['Kai','Brook'],['Natanel','Alsfine'],['Connor','Rothmeyer'],['Jacob','Morris'],
+   ['Nathan','Kemp'],['Chad','Greenblatt'],['Luke','Varkevisser'],['Gelo',''],['Dijkman','']
+  ].forEach(function(n,i){list.push({id:'n'+(i+1),first:n[0],last:n[1],playgroup:'ninjas',classifier:'10 yrs',day:'any',active:true});});
+  [['Benjamin',''],['Ezra',''],['Levia',''],['Asher',''],['Rohan',''],['Akira',''],
+   ['Jacques','Geldenhuys'],['Altan','Lotter Dogru'],['Oliver','Meer'],['Cairo','Tehini'],
+   ['Spencer','Forsyth'],['Henry','Zalaiskalns'],['Jesse','Sacks'],['Katte','Keeling'],
+   ['Olivia','Keeling'],['Tali','Johnston-Kowen'],['Liam',''],['Logan',''],
+   ['Jack','Bruckmann'],['Sam','Bruckmann'],['Meyo','Jackson-Sisulu'],['Nyah','Jackson-Sisulu'],
+   ['James','Pitman'],['Asher','Cohen'],['Ayan','Johri'],['Charlie','Eichenberger'],
+   ['Alex','Scholtz'],['Alan',''],['Friedland',''],['Croock',''],['Hira','']
+  ].forEach(function(n,i){list.push({id:'ln'+(i+1),first:n[0],last:n[1],playgroup:'lninjas',classifier:'5-10 yrs',day:'any',active:true});});
+  [['Heidi','Engelbrecht'],['Matthew','Ackerman'],['Sebastian','Daubeney'],
+   ['Sahil','Ratangee'],['Matthew','Merrifield'],['Regan','Day']
+  ].forEach(function(n,i){list.push({id:'ax'+(i+1),first:n[0],last:n[1],playgroup:'apex',classifier:'16+',day:'any',active:true});});
+  return list;
+})();
+
+// ─── IN-MEMORY DB (synced from Firebase) ─────────────────────────────────────
+var DB = {
+  students: [],
+  attendance: {},
+  shifts: [],
+  personalSessions: [],
+  correctionLog: [],
+  coachPins: {},
+  expenses: {},
+  payrollMonth: '',
+  expenseMonth: ''
+};
+var _fbLoaded = false;
+
+// ─── FIREBASE SYNC ────────────────────────────────────────────────────────────
+function setSyncStatus(state) {
+  var el = document.getElementById('syncIndicator');
+  if(!el) return;
+  el.className = 'sync-indicator sync-' + state;
+  el.textContent = state==='ok'?'● Live': state==='err'?'● Error':'● Saving…';
+}
+
+// Write a specific path to Firebase
+function fbSet(path, value, cb) {
+  setSyncStatus('pending');
+  fbdb.ref(path).set(value, function(err){
+    setSyncStatus(err ? 'err' : 'ok');
+    if(cb) cb(err);
+  });
+}
+function fbUpdate(path, value, cb) {
+  setSyncStatus('pending');
+  fbdb.ref(path).update(value, function(err){
+    setSyncStatus(err ? 'err' : 'ok');
+    if(cb) cb(err);
+  });
+}
+function fbRemove(path, cb) {
+  setSyncStatus('pending');
+  fbdb.ref(path).remove(function(err){
+    setSyncStatus(err ? 'err' : 'ok');
+    if(cb) cb(err);
+  });
+}
+
+// Save whole DB snapshot (used for bulk ops)
+function saveAll() {
+  var snapshot = {
+    attendance: DB.attendance||{},
+    shifts: DB.shifts||[],
+    personalSessions: DB.personalSessions||[],
+    correctionLog: DB.correctionLog||[],
+    coachPins: DB.coachPins||{},
+    expenses: DB.expenses||{},
+    payrollMonth: DB.payrollMonth||'',
+    expenseMonth: DB.expenseMonth||''
+  };
+  // Also save student active flags
+  var studentFlags = {};
+  (DB.students||[]).forEach(function(s){ studentFlags[s.id] = {active: s.active}; });
+  snapshot.studentFlags = studentFlags;
+  setSyncStatus('pending');
+  fbdb.ref('cfcParkour').set(snapshot, function(err){
+    setSyncStatus(err ? 'err' : 'ok');
+  });
+}
+
+// Granular saves for hot paths (attendance, shifts)
+function saveAttendance(key, value) {
+  if(value===null || value===undefined) {
+    fbRemove('cfcParkour/attendance/'+safeKey(key));
+  } else {
+    fbSet('cfcParkour/attendance/'+safeKey(key), value);
+  }
+}
+function saveShifts() { fbSet('cfcParkour/shifts', DB.shifts||[]); }
+function savePersonalSessions() { fbSet('cfcParkour/personalSessions', DB.personalSessions||[]); }
+function saveCorrectionLog() { fbSet('cfcParkour/correctionLog', DB.correctionLog||[]); }
+function saveCoachPins() { fbSet('cfcParkour/coachPins', DB.coachPins||{}); }
+function saveExpenses() { fbSet('cfcParkour/expenses', DB.expenses||{}); }
+function savePayrollMonth() { fbSet('cfcParkour/payrollMonth', DB.payrollMonth||''); }
+function saveExpenseMonth() { fbSet('cfcParkour/expenseMonth', DB.expenseMonth||''); }
+function saveStudentFlags() {
+  var flags = {};
+  (DB.students||[]).forEach(function(s){ flags[s.id]={active:s.active}; });
+  fbSet('cfcParkour/studentFlags', flags);
+}
+
+// Firebase doesn't allow dots/slashes in keys
+function safeKey(k) { return k.replace(/\./g,'_').replace(/\//g,'_').replace(/#/g,'_').replace(/\$/g,'_').replace(/\[/g,'_').replace(/\]/g,'_'); }
+function unSafeKey(k) { return k; } // keys don't need reversing — we store original in value
+
+// ─── LOAD FROM FIREBASE ───────────────────────────────────────────────────────
+function loadFromFirebase(cb) {
+  fbdb.ref('cfcParkour').once('value', function(snap) {
+    var data = snap.val() || {};
+    // Merge student active flags with master
+    var flags = data.studentFlags || {};
+    var sm = {};
+    MASTER_STUDENTS.forEach(function(m){ sm[m.id] = m; });
+    DB.students = MASTER_STUDENTS.map(function(m){
+      var flag = flags[m.id];
+      return Object.assign({}, m, {active: flag ? flag.active : true});
+    });
+    // Extra manually-added students stored separately
+    if(data.extraStudents) {
+      Object.values(data.extraStudents).forEach(function(s){ DB.students.push(s); });
+    }
+    // Restore attendance — keys were safeKey'd
+    DB.attendance = {};
+    if(data.attendance) {
+      Object.keys(data.attendance).forEach(function(k){
+        // Restore original key (replace _ back only for date separator)
+        DB.attendance[k] = data.attendance[k];
+      });
+    }
+    DB.shifts = data.shifts || [];
+    // Firebase stores arrays as objects if there are gaps — normalise
+    if(data.shifts && !Array.isArray(data.shifts)) {
+      DB.shifts = Object.values(data.shifts);
+    }
+    DB.personalSessions = data.personalSessions || [];
+    if(data.personalSessions && !Array.isArray(data.personalSessions)) {
+      DB.personalSessions = Object.values(data.personalSessions);
+    }
+    DB.correctionLog = data.correctionLog || [];
+    if(data.correctionLog && !Array.isArray(data.correctionLog)) {
+      DB.correctionLog = Object.values(data.correctionLog);
+    }
+    DB.coachPins = data.coachPins || {};
+    DB.expenses = data.expenses || {};
+    DB.payrollMonth = data.payrollMonth || '';
+    DB.expenseMonth = data.expenseMonth || '';
+    _fbLoaded = true;
+    cb();
+  }, function(err) {
+    // Firebase read failed — try localStorage fallback
+    console.warn('Firebase read failed, using localStorage fallback', err);
+    loadFromLocalStorage();
+    _fbLoaded = true;
+    cb();
+  });
+}
+
+function loadFromLocalStorage() {
+  try {
+    var s = localStorage.getItem('cfcParkourDB3');
+    if(s) {
+      var p = JSON.parse(s);
+      var sm = {};
+      (p.students||[]).forEach(function(x){ sm[x.id]=x; });
+      DB.students = MASTER_STUDENTS.map(function(m){ return sm[m.id]?Object.assign({},m,{active:sm[m.id].active}):m; });
+      var mids={};
+      MASTER_STUDENTS.forEach(function(x){mids[x.id]=true;});
+      (p.students||[]).filter(function(x){return !mids[x.id];}).forEach(function(x){DB.students.push(x);});
+      DB.attendance=p.attendance||{};
+      DB.shifts=p.shifts||[];
+      DB.personalSessions=p.personalSessions||[];
+      DB.correctionLog=p.correctionLog||[];
+      DB.coachPins=p.coachPins||{};
+      DB.expenses=p.expenses||{};
+      DB.payrollMonth=p.payrollMonth||'';
+      DB.expenseMonth=p.expenseMonth||'';
+    } else {
+      DB.students = MASTER_STUDENTS.slice();
+    }
+  } catch(e) { DB.students = MASTER_STUDENTS.slice(); }
+}
+
+// Real-time listener — updates DB.attendance live when other coaches mark attendance
+function startRealtimeListeners() {
+  fbdb.ref('cfcParkour/attendance').on('value', function(snap){
+    DB.attendance = snap.val() || {};
+  });
+  fbdb.ref('cfcParkour/shifts').on('value', function(snap){
+    var v = snap.val();
+    if(v) DB.shifts = Array.isArray(v)?v:Object.values(v);
+  });
+  fbdb.ref('cfcParkour/coachPins').on('value', function(snap){
+    DB.coachPins = snap.val() || {};
+  });
+  // Online/offline detection
+  fbdb.ref('.info/connected').on('value', function(snap){
+    var online = snap.val() === true;
+    var banner = document.getElementById('offlineBanner');
+    if(banner) banner.classList.toggle('hidden', online);
+    setSyncStatus(online ? 'ok' : 'err');
+  });
+}
+
+// ─── STATE ────────────────────────────────────────────────────────────────────
+var currentUser=null, pinBuffer='', selectedUserKey=null, currentTab='', currentPG='aisj';
+
+// ─── HELPERS ──────────────────────────────────────────────────────────────────
+function todayDate(){ return new Date().toISOString().split('T')[0]; }
+function todayDay(){ return new Date().toLocaleDateString('en-US',{weekday:'long'}); }
+function todayFull(){ return new Date().toLocaleDateString('en-ZA',{weekday:'long',year:'numeric',month:'long',day:'numeric'}); }
+function tsNow(){ return new Date().toLocaleTimeString('en-ZA',{hour:'2-digit',minute:'2-digit'}); }
+function attKey(d,sid){ return safeKey(d+'_'+sid); }
+function uid(){ return 'id_'+Date.now()+'_'+Math.random().toString(36).slice(2,7); }
+function getPG(id){ return PLAYGROUPS.filter(function(p){return p.id===id;})[0]; }
+function isAnyDay(pgId){ return ANY_DAY_GROUPS.indexOf(pgId)>=0; }
+function coachName(k){ return USERS[k]?USERS[k].name:k; }
+function fullName(s){ return (s.first+' '+s.last).trim(); }
+function getDaysForPG(pgId){ return PG_DAYS[pgId]||['Monday','Tuesday','Wednesday','Thursday','Friday']; }
+function h(str){ return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function classifierOptions(pgId){
+  if(pgId==='aisj') return ['KG','Grade 1','Grade 2','Grade 3','Grade 4','Grade 6'];
+  if(pgId==='ninjas') return ['10 yrs','11 yrs','12 yrs','13 yrs','14 yrs','15 yrs'];
+  if(pgId==='apex') return ['16+'];
+  if(pgId==='lninjas') return ['5 yrs','6 yrs','7 yrs','8 yrs','9 yrs','10 yrs'];
+  return ['3-4 yrs','5-6 yrs','7-8 yrs','9-10 yrs','11-12 yrs','13-17 yrs','18+'];
+}
+function getStudentsForSession(pgId, date) {
+  var students = DB.students.filter(function(s){ return s.active && s.playgroup===pgId; });
+  if(isAnyDay(pgId)) return students;
+  var dayName = new Date(date+'T12:00:00').toLocaleDateString('en-US',{weekday:'long'});
+  return students.filter(function(s){ return s.day===dayName; });
+}
+
+// ─── BOOT ─────────────────────────────────────────────────────────────────────
+loadFromFirebase(function(){
+  document.getElementById('loadingScreen').classList.add('hidden');
+  document.getElementById('loginScreen').classList.remove('hidden');
+  initLogin();
+});
+
+// ─── LOGIN ────────────────────────────────────────────────────────────────────
+function initLogin(){
+  var ul=document.getElementById('userList'); ul.innerHTML='';
+  Object.keys(USERS).forEach(function(key){
+    var u=USERS[key];
+    var b=document.createElement('button'); b.className='user-btn';
+    b.innerHTML='<div class="avatar" style="background:'+u.color+'">'+u.avatar+'</div>'
+      +'<div><div style="font-weight:700">'+u.name+'</div>'
+      +'<div style="font-size:.73rem;color:var(--sub)">'+(u.role==='admin'?'Super Admin':'Coach')+'</div></div>';
+    b.onclick=function(){ selectUser(key); };
+    ul.appendChild(b);
+  });
+}
+function selectUser(k){
+  selectedUserKey=k; pinBuffer=''; updatePinDots();
+  document.getElementById('userSelect').classList.add('hidden');
+  document.getElementById('pinSection').classList.remove('hidden');
+  document.getElementById('pinLabel').textContent='PIN for '+USERS[k].name;
+  document.getElementById('loginErr').textContent='';
+}
+function goBack(){
+  document.getElementById('userSelect').classList.remove('hidden');
+  document.getElementById('pinSection').classList.add('hidden');
+  pinBuffer=''; updatePinDots();
+}
+function pinPress(d){ if(pinBuffer.length>=4)return; pinBuffer+=d; updatePinDots(); if(pinBuffer.length===4)setTimeout(tryLogin,150); }
+function pinBack(){ pinBuffer=pinBuffer.slice(0,-1); updatePinDots(); }
+function pinClear(){ pinBuffer=''; updatePinDots(); }
+function updatePinDots(){ for(var i=0;i<4;i++) document.getElementById('d'+i).classList.toggle('filled',i<pinBuffer.length); }
+function tryLogin(){
+  var u=USERS[selectedUserKey];
+  var activePin=(DB.coachPins||{})[selectedUserKey]||u.pin;
+  if(pinBuffer===activePin){
+    currentUser=Object.assign({key:selectedUserKey},u);
+    document.getElementById('loginScreen').classList.add('hidden');
+    document.getElementById('app').classList.remove('hidden');
+    document.getElementById('topbarUser').textContent=u.avatar+' '+u.name+' · '+(u.role==='admin'?'Super Admin':'Coach');
+    startRealtimeListeners();
+    initApp();
+  } else {
+    document.getElementById('loginErr').textContent='Incorrect PIN. Try again.';
+    pinBuffer=''; updatePinDots();
+  }
+}
+function logout(){
+  fbdb.ref('cfcParkour/attendance').off();
+  fbdb.ref('cfcParkour/shifts').off();
+  fbdb.ref('cfcParkour/coachPins').off();
+  currentUser=null; pinBuffer=''; selectedUserKey=null; currentPG='aisj'; currentTab='';
+  document.getElementById('app').classList.add('hidden');
+  document.getElementById('loginScreen').classList.remove('hidden');
+  document.getElementById('userSelect').classList.remove('hidden');
+  document.getElementById('pinSection').classList.add('hidden');
+  document.getElementById('pgBar').classList.add('hidden');
+  initLogin();
+}
+
+// ─── APP SHELL ────────────────────────────────────────────────────────────────
+function initApp(){
+  if(currentUser.role==='admin'){ buildPGBar(); document.getElementById('pgBar').classList.remove('hidden'); }
+  else document.getElementById('pgBar').classList.add('hidden');
+  currentTab=''; buildNavTabs(); renderTab(currentTab);
+}
+function buildPGBar(){
+  var bar=document.getElementById('pgBar'); bar.innerHTML='';
+  PLAYGROUPS.forEach(function(pg){
+    var c=document.createElement('div');
+    c.className='pg-chip'+(pg.id===currentPG?' active':'');
+    c.textContent=pg.emoji+' '+pg.label;
+    c.style.color=pg.id===currentPG?pg.color:'rgba(255,255,255,.5)';
+    c.style.borderColor=pg.id===currentPG?pg.color:'transparent';
+    c.onclick=(function(id){return function(){currentPG=id;buildPGBar();renderTab(currentTab);};})(pg.id);
+    bar.appendChild(c);
+  });
+}
+function buildNavTabs(){
+  var tabs=currentUser.role==='admin'
+    ?[{id:'overview',label:'📊 Overview'},{id:'attendance',label:'✅ Attendance'},{id:'schedule',label:'📅 Schedule'},
+      {id:'students',label:'👥 Students'},{id:'corrections',label:'✏️ Corrections'},{id:'reports',label:'📋 Reports'},
+      {id:'payroll',label:'💰 Payroll'},{id:'expenses',label:'🏦 Expenses'},{id:'pinmanage',label:'🔐 PINs'}]
+    :[{id:'mySchedule',label:'📅 My Schedule'},{id:'markAttendance',label:'✅ Mark Attendance'},{id:'myStats',label:'📈 My Stats'}];
+  var nt=document.getElementById('navTabs'); nt.innerHTML='';
+  if(!currentTab||!tabs.filter(function(t){return t.id===currentTab;}).length) currentTab=tabs[0].id;
+  tabs.forEach(function(t){
+    var el=document.createElement('div');
+    el.className='nav-tab'+(t.id===currentTab?' active':'');
+    el.textContent=t.label;
+    el.onclick=(function(id,elem){
+      return function(){
+        currentTab=id;
+        document.querySelectorAll('.nav-tab').forEach(function(x){x.classList.remove('active');});
+        elem.classList.add('active');
+        renderTab(id);
+      };
+    })(t.id,el);
+    nt.appendChild(el);
+  });
+}
+function renderTab(id){
+  document.getElementById('mainContent').innerHTML='';
+  if(id==='overview') renderOverview();
+  else if(id==='attendance'){if(currentPG==='personal')renderPersonalAttendance();else renderAdminAttendance();}
+  else if(id==='schedule') renderScheduleAdmin();
+  else if(id==='students'){if(currentPG==='personal')renderPersonalClients();else renderStudents();}
+  else if(id==='corrections') renderCorrections();
+  else if(id==='reports') renderReports();
+  else if(id==='payroll') renderPayroll();
+  else if(id==='expenses') renderExpenses();
+  else if(id==='pinmanage') renderPINManage();
+  else if(id==='mySchedule') renderMySchedule();
+  else if(id==='markAttendance') renderMarkAttendance();
+  else if(id==='myStats') renderMyStats();
+}
+
+// ─── OVERVIEW ─────────────────────────────────────────────────────────────────
+function renderOverview(){
+  var mc=document.getElementById('mainContent');
+  var pg=getPG(currentPG); var date=todayDate();
+  var students=getStudentsForSession(currentPG,date);
+  var present=students.filter(function(s){var a=DB.attendance[attKey(date,s.id)];return a&&a.status==='present';}).length;
+  var absent=students.filter(function(s){var a=DB.attendance[attKey(date,s.id)];return a&&a.status==='absent';}).length;
+  var pct=students.length?Math.round(present/students.length*100):0;
+  var pctColor=pct>=80?'var(--green)':pct>=60?'var(--gold)':'var(--red)';
+  var html='<div class="today-header" style="background:linear-gradient(135deg,#0f172a,'+pg.color+')">'
+    +'<div style="font-size:.78rem;font-weight:700;opacity:.7;letter-spacing:1px;text-transform:uppercase">'+pg.emoji+' '+pg.label+'</div>'
+    +'<div class="today-date">'+todayFull()+'</div><div class="today-sub">Live Attendance Dashboard</div></div>';
+  if(isAnyDay(currentPG)) html+='<div class="any-day-notice">🥷 '+pg.label+' — all '+students.length+' students shown. Mark who is actually present today.</div>';
+  html+='<div class="stat-grid">'
+    +'<div class="stat-box blue"><div class="stat-num">'+students.length+'</div><div class="stat-label">'+(isAnyDay(currentPG)?'Registered':'Expected')+'</div></div>'
+    +'<div class="stat-box green"><div class="stat-num">'+present+'</div><div class="stat-label">Present</div></div>'
+    +'<div class="stat-box red"><div class="stat-num">'+absent+'</div><div class="stat-label">Absent</div></div>'
+    +'<div class="stat-box gold"><div class="stat-num">'+(students.length-present-absent)+'</div><div class="stat-label">Not Marked</div></div></div>'
+    +'<div class="card"><div class="card-title">📊 Attendance Rate</div>'
+    +'<div style="font-size:2rem;font-weight:900;color:'+pctColor+'">'+pct+'%</div>'
+    +'<div class="progress-bar"><div class="progress-fill" style="width:'+pct+'%;background:'+pctColor+'"></div></div></div>'
+    +'<div class="card"><div class="card-title">📋 All Playgroups Today</div>';
+  PLAYGROUPS.forEach(function(p){
+    var stu=getStudentsForSession(p.id,date);
+    var pr=stu.filter(function(s){var a=DB.attendance[attKey(date,s.id)];return a&&a.status==='present';}).length;
+    var pc=stu.length?Math.round(pr/stu.length*100):0;
+    html+='<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">'
+      +'<div style="width:9px;height:9px;border-radius:50%;background:'+p.color+';flex-shrink:0"></div>'
+      +'<div style="flex:1;font-weight:600;font-size:.87rem">'+p.emoji+' '+p.label+'</div>'
+      +'<div style="font-size:.8rem;color:var(--sub)">'+stu.length+' students</div>'
+      +'<div style="font-weight:700;font-size:.87rem;color:'+p.color+'">'+pc+'%</div></div>';
+  });
+  html+='</div>';
+  mc.innerHTML=html;
+}
+
+// ─── ATTENDANCE (ADMIN) ───────────────────────────────────────────────────────
+function renderAdminAttendance(){
+  var mc=document.getElementById('mainContent');
+  var pg=getPG(currentPG);
+  var anyDay=isAnyDay(currentPG);
+  var html='<div class="pg-section-header" style="background:'+pg.color+'">'+pg.emoji+' '+pg.label+' - Attendance</div>';
+  if(anyDay) html+='<div class="any-day-notice">🥷 Select a date — all students are shown for any-day groups.</div>';
+  html+='<div class="card">'
+    +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">'
+    +'<div class="form-row" style="margin:0;flex:1;min-width:180px"><label class="form-label">Date</label>'
+    +'<input type="date" class="form-input" id="adminAttDate" value="'+todayDate()+'" onchange="refreshAdminAtt()"></div></div>'
+    +'<input class="search-bar" placeholder="Search student..." oninput="filterAdminAtt(this.value)">'
+    +'<div id="adminAttList"></div></div>';
+  mc.innerHTML=html;
+  refreshAdminAtt();
+}
+function refreshAdminAtt(){
+  var date=document.getElementById('adminAttDate')?document.getElementById('adminAttDate').value:todayDate();
+  document.getElementById('adminAttList').innerHTML=renderAttRows(getStudentsForSession(currentPG,date),date);
+}
+function filterAdminAtt(q){
+  var date=document.getElementById('adminAttDate')?document.getElementById('adminAttDate').value:todayDate();
+  var s=getStudentsForSession(currentPG,date).filter(function(s){return fullName(s).toLowerCase().indexOf(q.toLowerCase())>=0;});
+  document.getElementById('adminAttList').innerHTML=renderAttRows(s,date);
+}
+function renderAttRows(students,date){
+  if(!students.length) return '<div style="color:var(--sub);padding:14px 0">No students for this session.</div>';
+  return students.map(function(s){
+    var a=DB.attendance[attKey(date,s.id)]||{};
+    var ts=a.timestamp?('✓ '+a.timestamp+' · '+(a.coach||'')):'Not marked';
+    return '<div class="student-row" id="row_'+s.id+'">'
+      +'<div style="flex:1;min-width:0"><div class="student-name">'+h(fullName(s))+'</div>'
+      +'<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:3px"><span class="badge blue">'+h(s.classifier)+'</span>'
+      +(s.day!=='any'?'<span class="badge grey">'+h(s.day)+'</span>':'<span class="badge grey">Any day</span>')
+      +'<span style="font-size:.7rem;color:var(--sub);margin-top:3px" id="ts_'+s.id+'">'+ts+'</span></div>'
+      +'<input class="notes-input" placeholder="Notes..." value="'+h(a.notes||'')+'" onchange="updateNotes(\''+s.id+'\',\''+date+'\',this.value)"></div>'
+      +'<div class="att-btns">'
+      +'<button class="att-btn present'+(a.status==='present'?' active':'')+'" onclick="markAtt(\''+s.id+'\',\''+date+'\',\'present\')" id="bp_'+s.id+'">✓ Present</button>'
+      +'<button class="att-btn absent'+(a.status==='absent'?' active':'')+'" onclick="markAtt(\''+s.id+'\',\''+date+'\',\'absent\')" id="ba_'+s.id+'">✗ Absent</button>'
+      +'</div></div>';
+  }).join('');
+}
+function markAtt(sid,date,status){
+  var key=attKey(date,sid);
+  var ex=DB.attendance[key]||{};
+  var record=Object.assign({},ex,{status:status,timestamp:tsNow(),coach:currentUser.name});
+  DB.attendance[key]=record;
+  saveAttendance(key,record);
+  var bp=document.getElementById('bp_'+sid); if(bp){bp.classList.toggle('active',status==='present');}
+  var ba=document.getElementById('ba_'+sid); if(ba){ba.classList.toggle('active',status==='absent');}
+  var ts=document.getElementById('ts_'+sid); if(ts) ts.textContent='✓ '+tsNow()+' · '+currentUser.name;
+}
+function updateNotes(sid,date,notes){
+  var key=attKey(date,sid);
+  var ex=DB.attendance[key]||{};
+  var record=Object.assign({},ex,{notes:notes});
+  DB.attendance[key]=record;
+  saveAttendance(key,record);
+}
+
+// ─── CORRECTIONS ─────────────────────────────────────────────────────────────
+function renderCorrections(){
+  var mc=document.getElementById('mainContent');
+  mc.innerHTML='<div class="card"><div class="card-title">✏️ Attendance Correction</div>'
+    +'<div style="font-size:.83rem;color:var(--sub);margin-bottom:14px">Search a student and date to override attendance.</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">'
+    +'<div class="form-row"><label class="form-label">Search Student</label>'
+    +'<input class="form-input" id="corrSearch" placeholder="Type name..." oninput="corrSearchStudent(this.value)"></div>'
+    +'<div class="form-row"><label class="form-label">Date</label>'
+    +'<input type="date" class="form-input" id="corrDate" value="'+todayDate()+'"></div></div>'
+    +'<div id="corrStudentList" style="margin-bottom:10px"></div>'
+    +'<div id="corrPanel" class="hidden">'
+    +'<div style="background:#fffbeb;border:1.5px solid #f59e0b;border-radius:10px;padding:14px;margin-bottom:10px">'
+    +'<div style="font-weight:700;margin-bottom:8px">Record for <span id="corrStudentName"></span> on <span id="corrDateLabel"></span></div>'
+    +'<div id="corrCurrentStatus" style="margin-bottom:10px;font-size:.9rem"></div>'
+    +'<div class="form-row"><label class="form-label">Override Status</label>'
+    +'<select class="form-select" id="corrStatus"><option value="present">✓ Present</option><option value="absent">✗ Absent</option><option value="clear">Clear (remove mark)</option></select></div>'
+    +'<div class="form-row"><label class="form-label">Reason</label>'
+    +'<input class="form-input" id="corrReason" placeholder="e.g. Coach marked wrong student..."></div>'
+    +'<button class="btn btn-primary" onclick="applyCorrection()">✅ Apply Correction</button>'
+    +'</div></div></div>'
+    +'<div class="card"><div class="card-title">📋 Correction Log</div><div id="corrLog">'+renderCorrLog()+'</div></div>';
+}
+function corrSearchStudent(q){
+  var list=document.getElementById('corrStudentList');
+  if(!q||q.length<2){list.innerHTML='';return;}
+  var matches=DB.students.filter(function(s){return s.active&&fullName(s).toLowerCase().indexOf(q.toLowerCase())>=0;}).slice(0,8);
+  list.innerHTML=matches.map(function(s){
+    var pg=getPG(s.playgroup);
+    return '<button onclick="selectCorrStudent(\''+s.id+'\')" style="display:block;width:100%;text-align:left;padding:9px 12px;margin-bottom:4px;border:1.5px solid var(--border);border-radius:8px;background:#f8fafc;cursor:pointer;font-size:.9rem">'
+      +'<strong>'+h(fullName(s))+'</strong> <span style="color:var(--sub);font-size:.78rem">'+(pg?pg.emoji+' '+pg.label:'')+' · '+(s.day==='any'?'any day':s.day)+'</span></button>';
+  }).join('');
+}
+var _corrStudentId=null;
+function selectCorrStudent(sid){
+  _corrStudentId=sid;
+  var s=DB.students.filter(function(x){return x.id===sid;})[0];
+  var date=document.getElementById('corrDate').value;
+  var a=DB.attendance[attKey(date,sid)]||{};
+  document.getElementById('corrStudentList').innerHTML='';
+  document.getElementById('corrSearch').value=fullName(s);
+  document.getElementById('corrPanel').classList.remove('hidden');
+  document.getElementById('corrStudentName').textContent=fullName(s);
+  document.getElementById('corrDateLabel').textContent=date;
+  document.getElementById('corrCurrentStatus').innerHTML=a.status
+    ?'Status: <strong style="color:'+(a.status==='present'?'var(--green)':'var(--red)')+'">'+( a.status==='present'?'✓ Present':'✗ Absent')+'</strong> · Logged '+(a.timestamp||'?')+' by '+(a.coach||'?')
+    :'<span style="color:var(--sub)">No attendance marked for this date</span>';
+  document.getElementById('corrStatus').value=a.status||'present';
+}
+function applyCorrection(){
+  if(!_corrStudentId){alert('Select a student first.');return;}
+  var date=document.getElementById('corrDate').value;
+  var status=document.getElementById('corrStatus').value;
+  var reason=document.getElementById('corrReason').value.trim()||'Admin correction';
+  var key=attKey(date,_corrStudentId);
+  if(status==='clear'){
+    delete DB.attendance[key];
+    saveAttendance(key,null);
+  } else {
+    var record={status:status,timestamp:tsNow(),coach:'Amanda (Override)',notes:reason};
+    DB.attendance[key]=record;
+    saveAttendance(key,record);
+  }
+  if(!DB.correctionLog) DB.correctionLog=[];
+  var s=DB.students.filter(function(x){return x.id===_corrStudentId;})[0];
+  DB.correctionLog.unshift({id:uid(),student:fullName(s),date:date,status:status,reason:reason,at:tsNow()});
+  saveCorrectionLog();
+  alert('Correction applied for '+fullName(s)); _corrStudentId=null; renderCorrections();
+}
+function renderCorrLog(){
+  var log=DB.correctionLog||[];
+  if(!log.length) return '<div style="color:var(--sub);font-size:.85rem">No corrections yet.</div>';
+  var html='<div class="table-wrap"><table><tr><th>Date</th><th>Student</th><th>Changed To</th><th>Reason</th><th>Time</th></tr>';
+  log.slice(0,20).forEach(function(c){
+    var cls=c.status==='present'?'green':c.status==='absent'?'red':'grey';
+    html+='<tr><td>'+c.date+'</td><td><strong>'+h(c.student)+'</strong></td><td><span class="badge '+cls+'">'+(c.status==='clear'?'Cleared':c.status)+'</span></td><td style="font-size:.8rem;color:var(--sub)">'+h(c.reason)+'</td><td style="font-size:.78rem">'+c.at+'</td></tr>';
+  });
+  return html+'</table></div>';
+}
+
+// ─── PIN MANAGEMENT ───────────────────────────────────────────────────────────
+function renderPINManage(){
+  var mc=document.getElementById('mainContent');
+  var pins=DB.coachPins||{};
+  var html='<div class="card"><div class="card-title">🔐 Coach PIN Management</div>'
+    +'<div style="font-size:.83rem;color:var(--sub);margin-bottom:16px">Changes sync to Firebase instantly.</div>';
+  Object.keys(USERS).filter(function(k){return USERS[k].role==='coach';}).forEach(function(key){
+    var u=USERS[key]; var cur=pins[key]||u.pin;
+    html+='<div style="display:flex;align-items:center;gap:12px;padding:14px 0;border-bottom:1px solid var(--border);flex-wrap:wrap">'
+      +'<div class="avatar" style="background:'+u.color+';width:40px;height:40px;flex-shrink:0">'+u.avatar+'</div>'
+      +'<div style="flex:1;min-width:120px"><div style="font-weight:700">'+u.name+'</div>'
+      +'<div style="font-size:.78rem;color:var(--sub)">Current PIN: <strong>'+cur+'</strong></div></div>'
+      +'<div style="display:flex;gap:8px;align-items:center">'
+      +'<input type="number" id="pin_'+key+'" placeholder="New PIN" style="width:100px;padding:9px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:1rem;text-align:center" oninput="this.value=this.value.slice(0,4)">'
+      +'<button class="btn btn-primary btn-sm" onclick="savePin(\''+key+'\')">Save</button></div></div>';
+  });
+  mc.innerHTML=html+'</div>';
+}
+function savePin(k){
+  var p=document.getElementById('pin_'+k).value.trim();
+  if(p.length!==4||isNaN(p)){alert('PIN must be exactly 4 digits.');return;}
+  if(!DB.coachPins) DB.coachPins={};
+  DB.coachPins[k]=p;
+  saveCoachPins();
+  alert('PIN updated for '+USERS[k].name); renderPINManage();
+}
+
+// ─── SCHEDULE ─────────────────────────────────────────────────────────────────
+function renderScheduleAdmin(){
+  var mc=document.getElementById('mainContent');
+  var pgOpts=PLAYGROUPS.map(function(p){return '<option value="'+p.id+'">'+p.emoji+' '+p.label+'</option>';}).join('');
+  var coachOpts=Object.keys(USERS).filter(function(k){return USERS[k].role==='coach';}).map(function(k){return '<option value="'+k+'">'+USERS[k].avatar+' '+USERS[k].name+'</option>';}).join('');
+  mc.innerHTML='<div class="card"><div class="card-title">📅 Allocate Coach Shift</div>'
+    +'<div class="form-row"><label class="form-label">1. Coach</label>'
+    +'<select class="form-select" id="shCoach"><option value="">Select coach...</option>'+coachOpts+'</select></div>'
+    +'<div class="form-row"><label class="form-label">2. Playgroup</label>'
+    +'<select class="form-select" id="shPG" onchange="updateSlots()"><option value="">-- Choose playgroup --</option>'+pgOpts+'</select></div>'
+    +'<div class="form-row"><label class="form-label">3. Day & Time</label>'
+    +'<div id="slotGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px"><div style="grid-column:span 2;color:var(--sub);font-size:.85rem">Select a playgroup first</div></div>'
+    +'<input type="hidden" id="shDay"><input type="hidden" id="shStart"><input type="hidden" id="shEnd">'
+    +'<div id="slotSelected" style="margin-top:10px;font-size:.85rem;color:var(--sub);padding:8px 12px;background:#f8fafc;border-radius:8px;border:1.5px solid var(--border)">No slot selected</div></div>'
+    +'<div id="manualTimeRow" class="hidden form-row"><label class="form-label">Session Time</label>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'
+    +'<div><label class="form-label">Start</label><input type="time" class="form-input" id="manualStart" onchange="applyManualTime()"></div>'
+    +'<div><label class="form-label">End</label><input type="time" class="form-input" id="manualEnd" onchange="applyManualTime()"></div></div></div>'
+    +'<div class="form-row"><label class="form-label">4. Date <span style="color:var(--red);font-size:.78rem">★ Required for payroll</span></label>'
+    +'<input type="date" class="form-input" id="shDate" value="'+todayDate()+'"></div>'
+    +'<button class="btn btn-primary" style="width:100%" onclick="addShift()">+ Allocate Shift</button></div>'
+    +'<div class="card"><div class="card-title">📋 All Shifts</div>'
+    +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">'
+    +'<button class="btn btn-sm" style="background:#f1f5f9" onclick="filterShifts(\'all\')">All</button>'
+    +PLAYGROUPS.map(function(p){return '<button class="btn btn-sm" style="background:'+p.color+'22;color:'+p.color+'" onclick="filterShifts(\''+p.id+'\')">'+p.emoji+' '+p.label+'</button>';}).join('')
+    +'</div><div id="shiftList">'+renderShiftList('all')+'</div></div>';
+}
+function updateSlots(){
+  var pgId=document.getElementById('shPG')?document.getElementById('shPG').value:'';
+  var grid=document.getElementById('slotGrid'); var manualRow=document.getElementById('manualTimeRow'); var sel=document.getElementById('slotSelected');
+  if(!grid) return;
+  document.getElementById('shDay').value=''; document.getElementById('shStart').value=''; document.getElementById('shEnd').value='';
+  sel.textContent='No slot selected'; sel.style.color='var(--sub)';
+  document.querySelectorAll('.shift-slot-btn').forEach(function(b){b.classList.remove('selected');});
+  manualRow.classList.add('hidden');
+  if(!pgId){grid.innerHTML='<div style="grid-column:span 2;color:var(--sub);font-size:.85rem">Select a playgroup first</div>';return;}
+  var slots=ALL_SLOTS[pgId]||[]; var isPersonal=pgId==='personal'; var pg=getPG(pgId);
+  if(isPersonal) manualRow.classList.remove('hidden');
+  grid.innerHTML=slots.map(function(s){
+    var color=pg?pg.color:'#2563eb';
+    return '<button type="button" class="shift-slot-btn" data-day="'+s.day+'" data-start="'+s.start+'" data-end="'+s.end+'" data-personal="'+(isPersonal?1:0)+'" onclick="pickSlot(this)">'
+      +'<div style="font-weight:800;color:'+color+';font-size:.88rem">'+s.day+'</div>'
+      +'<div style="font-size:.76rem;margin-top:3px;font-weight:600;color:'+(isPersonal?'var(--sub)':color)+'">'+( isPersonal?'Set manually':s.label)+'</div></button>';
+  }).join('');
+}
+function pickSlot(btn){
+  document.querySelectorAll('.shift-slot-btn').forEach(function(b){b.classList.remove('selected');});
+  btn.classList.add('selected');
+  var day=btn.getAttribute('data-day'); var isPersonal=btn.getAttribute('data-personal')==='1';
+  document.getElementById('shDay').value=day;
+  var sel=document.getElementById('slotSelected'); var pgId=document.getElementById('shPG').value; var pg=getPG(pgId);
+  if(isPersonal){
+    document.getElementById('shStart').value=''; document.getElementById('shEnd').value='';
+    sel.innerHTML='<strong>Personal Classes</strong> · <strong>'+day+'</strong> · Enter time below'; sel.style.color='#7c3aed';
+  } else {
+    document.getElementById('shStart').value=btn.getAttribute('data-start');
+    document.getElementById('shEnd').value=btn.getAttribute('data-end');
+    sel.innerHTML=(pg?pg.emoji+' <strong>'+pg.label+'</strong>':'')+' · <strong>'+day+'</strong> · <strong>'+btn.getAttribute('data-start')+' - '+btn.getAttribute('data-end')+'</strong>';
+    sel.style.color='#16a34a';
+  }
+}
+function applyManualTime(){
+  var s=document.getElementById('manualStart').value; var e=document.getElementById('manualEnd').value;
+  document.getElementById('shStart').value=s; document.getElementById('shEnd').value=e;
+  var day=document.getElementById('shDay').value; var sel=document.getElementById('slotSelected');
+  if(s&&e&&day){sel.innerHTML='<strong>Personal</strong> · <strong>'+day+'</strong> · <strong>'+s+' - '+e+'</strong>'; sel.style.color='#7c3aed';}
+}
+function addShift(){
+  var coach=document.getElementById('shCoach').value; var pgId=document.getElementById('shPG').value;
+  var day=document.getElementById('shDay').value; var date=document.getElementById('shDate').value;
+  var start=document.getElementById('shStart').value; var end=document.getElementById('shEnd').value;
+  if(!coach){alert('Please select a coach.');return;}
+  if(!day){alert('Please select a day/time slot.');return;}
+  if(!start||!end){alert('Please enter start and end time.');return;}
+  if(!date){alert('Date is required for payroll tracking.');return;}
+  DB.shifts.push({id:uid(),coach:coach,playgroup:pgId,day:day,date:date,startTime:start,endTime:end});
+  saveShifts();
+  document.getElementById('shiftList').innerHTML=renderShiftList('all');
+  document.querySelectorAll('.shift-slot-btn').forEach(function(b){b.classList.remove('selected');});
+  document.getElementById('shDay').value=''; document.getElementById('shStart').value=''; document.getElementById('shEnd').value='';
+  document.getElementById('slotSelected').textContent='No slot selected'; document.getElementById('slotSelected').style.color='var(--sub)';
+  alert('Shift allocated ✅');
+}
+function renderShiftList(filter){
+  var shifts=filter&&filter!=='all'?DB.shifts.filter(function(s){return s.playgroup===filter;}):DB.shifts;
+  if(!shifts.length) return '<div style="color:var(--sub);font-size:.85rem">No shifts yet.</div>';
+  shifts=shifts.slice().sort(function(a,b){if(a.date&&b.date)return b.date.localeCompare(a.date);return 0;});
+  var html='<div class="table-wrap"><table><tr><th>Coach</th><th>Playgroup</th><th>Day</th><th>Time</th><th>Date</th><th></th></tr>';
+  shifts.forEach(function(s){
+    var pg=getPG(s.playgroup);
+    html+='<tr><td><strong>'+coachName(s.coach)+'</strong></td><td>'+(pg?pg.emoji+' '+pg.label:s.playgroup)+'</td>'
+      +'<td>'+s.day+'</td><td style="font-weight:600;color:#2563eb">'+s.startTime+'-'+s.endTime+'</td>'
+      +'<td>'+(s.date||'<span style="color:var(--red);font-size:.75rem">⚠ No date</span>')+'</td>'
+      +'<td><button class="btn btn-danger btn-sm" onclick="deleteShift(\''+s.id+'\')">🗑</button></td></tr>';
+  });
+  return html+'</table></div>';
+}
+function filterShifts(f){document.getElementById('shiftList').innerHTML=renderShiftList(f);}
+function deleteShift(id){
+  if(!confirm('Remove this shift?')) return;
+  DB.shifts=DB.shifts.filter(function(s){return s.id!==id;});
+  saveShifts();
+  document.getElementById('shiftList').innerHTML=renderShiftList('all');
+}
+
+// ─── STUDENTS ─────────────────────────────────────────────────────────────────
+function renderStudents(){
+  var mc=document.getElementById('mainContent');
+  var pg=getPG(currentPG); var anyDay=isAnyDay(currentPG);
+  var pgStudents=DB.students.filter(function(s){return s.playgroup===currentPG;});
+  var classOpts=classifierOptions(currentPG).map(function(c){return '<option>'+c+'</option>';}).join('');
+  var dayOpts=anyDay?'<option value="any">Any Day</option>':getDaysForPG(currentPG).map(function(d){return '<option>'+d+'</option>';}).join('');
+  mc.innerHTML='<div class="pg-section-header" style="background:'+pg.color+'">'+pg.emoji+' '+pg.label+' - Student Register</div>'
+    +(anyDay?'<div class="any-day-notice">🥷 Students attend on any day — listed once, no fixed day.</div>':'')
+    +'<div class="card"><div class="card-title">+ Add Student</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'
+    +'<div class="form-row"><label class="form-label">First Name</label><input class="form-input" id="stFirst" placeholder="First name"></div>'
+    +'<div class="form-row"><label class="form-label">Last Name</label><input class="form-input" id="stLast" placeholder="Last name (optional)"></div></div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'
+    +'<div class="form-row"><label class="form-label">'+pg.classifierLabel+'</label><select class="form-select" id="stClass">'+classOpts+'</select></div>'
+    +(anyDay?'':'<div class="form-row"><label class="form-label">Day</label><select class="form-select" id="stDay">'+dayOpts+'</select></div>')
+    +'</div><button class="btn btn-primary" onclick="addStudent()">+ Add Student</button></div>'
+    +'<div class="card"><div class="card-title">👥 '+pg.label+' ('+pgStudents.filter(function(s){return s.active;}).length+' active)</div>'
+    +'<input class="search-bar" placeholder="Search..." oninput="filterStudents(this.value)">'
+    +'<div id="studentTable">'+renderStudentTable(pgStudents,anyDay)+'</div></div>';
+}
+function filterStudents(q){
+  var anyDay=isAnyDay(currentPG);
+  document.getElementById('studentTable').innerHTML=renderStudentTable(
+    DB.students.filter(function(s){return s.playgroup===currentPG&&fullName(s).toLowerCase().indexOf(q.toLowerCase())>=0;}),anyDay);
+}
+function renderStudentTable(students,anyDay){
+  if(!students.length) return '<div style="color:var(--sub);padding:14px 0">No students yet.</div>';
+  if(anyDay){
+    return students.map(function(s){
+      return '<div class="student-row" style="'+(s.active?'':'opacity:.4')+'">'
+        +'<div style="flex:1"><div class="student-name">'+h(fullName(s))+(s.active?'':' <span style="font-size:.7rem;color:var(--red)">(Inactive)</span>')+'</div>'
+        +'<div style="display:flex;gap:5px;margin-top:3px"><span class="badge blue">'+h(s.classifier)+'</span><span class="badge grey">Any Day</span></div></div>'
+        +'<div style="display:flex;gap:6px">'
+        +'<button class="btn btn-sm '+(s.active?'btn-danger':'btn-success')+'" onclick="toggleStudent(\''+s.id+'\')">'+(s.active?'Deactivate':'Activate')+'</button>'
+        +'<button class="btn btn-danger btn-sm" onclick="deleteStudent(\''+s.id+'\')">🗑</button></div></div>';
+    }).join('');
+  }
+  var days=getDaysForPG(currentPG); var seen={}; var unique=students.filter(function(s){if(seen[s.id])return false;seen[s.id]=true;return true;});
+  return days.map(function(day){
+    var ds=unique.filter(function(s){return s.day===day;});
+    if(!ds.length) return '';
+    var html='<div style="margin-bottom:16px"><div style="font-weight:800;color:#2563eb;font-size:.87rem;margin-bottom:7px;padding:5px 0;border-bottom:2px solid #dbeafe">'+day+' - '+ds.filter(function(s){return s.active;}).length+' students</div>';
+    ds.forEach(function(s){
+      html+='<div class="student-row" style="'+(s.active?'':'opacity:.4')+'">'
+        +'<div style="flex:1"><div class="student-name">'+h(fullName(s))+(s.active?'':' <span style="font-size:.7rem;color:var(--red)">(Inactive)</span>')+'</div>'
+        +'<div style="display:flex;gap:5px;margin-top:3px"><span class="badge blue">'+h(s.classifier)+'</span></div></div>'
+        +'<div style="display:flex;gap:6px">'
+        +'<button class="btn btn-sm '+(s.active?'btn-danger':'btn-success')+'" onclick="toggleStudent(\''+s.id+'\')">'+(s.active?'Deactivate':'Activate')+'</button>'
+        +'<button class="btn btn-danger btn-sm" onclick="deleteStudent(\''+s.id+'\')">🗑</button></div></div>';
+    });
+    return html+'</div>';
+  }).join('');
+}
+function addStudent(){
+  var first=document.getElementById('stFirst').value.trim(); var last=document.getElementById('stLast').value.trim();
+  var classifier=document.getElementById('stClass').value; var anyDay=isAnyDay(currentPG);
+  var day=anyDay?'any':(document.getElementById('stDay')?document.getElementById('stDay').value:'any');
+  if(!first){alert('Please enter a first name.');return;}
+  var ns={id:uid(),first:first,last:last,playgroup:currentPG,classifier:classifier,day:day,active:true};
+  DB.students.push(ns);
+  // Save extra student to Firebase
+  fbSet('cfcParkour/extraStudents/'+ns.id, ns);
+  renderStudents();
+}
+function toggleStudent(id){
+  var s=DB.students.filter(function(x){return x.id===id;})[0];
+  if(s){s.active=!s.active; saveStudentFlags(); if(currentPG==='personal')renderPersonalClients();else renderStudents();}
+}
+function deleteStudent(id){
+  if(!confirm('Permanently delete?')) return;
+  DB.students=DB.students.filter(function(s){return s.id!==id;});
+  saveStudentFlags();
+  fbRemove('cfcParkour/extraStudents/'+id);
+  if(currentPG==='personal')renderPersonalClients();else renderStudents();
+}
+
+// ─── PERSONAL CLASSES ─────────────────────────────────────────────────────────
+function renderPersonalClients(){
+  var mc=document.getElementById('mainContent');
+  var clients=DB.students.filter(function(s){return s.playgroup==='personal';});
+  mc.innerHTML='<div class="pg-section-header" style="background:#7c3aed">🧍 Personal Classes - Client Register</div>'
+    +'<div class="card"><div class="card-title">+ Add Client</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'
+    +'<div class="form-row"><label class="form-label">First Name</label><input class="form-input" id="pcFirst" placeholder="First name"></div>'
+    +'<div class="form-row"><label class="form-label">Last Name</label><input class="form-input" id="pcLast" placeholder="Last name"></div></div>'
+    +'<div class="form-row"><label class="form-label">Age</label><input class="form-input" id="pcAge" type="number" min="1" max="99" placeholder="e.g. 14" style="max-width:140px"></div>'
+    +'<button class="btn btn-primary" onclick="addPersonalClient()">+ Add Client</button></div>'
+    +'<div class="card"><div class="card-title">👤 Clients ('+clients.filter(function(s){return s.active;}).length+' active)</div>'
+    +'<input class="search-bar" placeholder="Search..." oninput="filterPersonalClients(this.value)">'
+    +'<div id="pcList">'+renderClientList(clients)+'</div></div>';
+}
+function renderClientList(clients){
+  if(!clients.length) return '<div style="color:var(--sub);padding:14px 0">No clients yet.</div>';
+  return clients.map(function(c){
+    return '<div class="student-row" style="'+(c.active?'':'opacity:.4')+'">'
+      +'<div style="flex:1"><div class="student-name">'+h(fullName(c))+'</div><div style="margin-top:3px"><span class="badge blue">Age '+h(c.classifier)+'</span></div></div>'
+      +'<div style="display:flex;gap:6px">'
+      +'<button class="btn btn-sm '+(c.active?'btn-danger':'btn-success')+'" onclick="toggleStudent(\''+c.id+'\')">'+(c.active?'Deactivate':'Activate')+'</button>'
+      +'<button class="btn btn-danger btn-sm" onclick="deleteStudent(\''+c.id+'\')">🗑</button></div></div>';
+  }).join('');
+}
+function filterPersonalClients(q){
+  document.getElementById('pcList').innerHTML=renderClientList(DB.students.filter(function(s){return s.playgroup==='personal'&&fullName(s).toLowerCase().indexOf(q.toLowerCase())>=0;}));
+}
+function addPersonalClient(){
+  var first=document.getElementById('pcFirst').value.trim(); var last=document.getElementById('pcLast').value.trim(); var age=document.getElementById('pcAge').value.trim();
+  if(!first){alert('Please enter a first name.');return;}
+  if(!age){alert('Please enter age.');return;}
+  var ns={id:uid(),first:first,last:last,playgroup:'personal',classifier:age,day:'flexible',active:true};
+  DB.students.push(ns);
+  fbSet('cfcParkour/extraStudents/'+ns.id, ns);
+  renderPersonalClients();
+}
+function renderPersonalAttendance(){
+  var mc=document.getElementById('mainContent');
+  var clients=DB.students.filter(function(s){return s.playgroup==='personal'&&s.active;});
+  var sessions=DB.personalSessions||[];
+  var clientOpts=clients.map(function(c){return '<option value="'+c.id+'">'+h(fullName(c))+' (Age '+c.classifier+')</option>';}).join('');
+  var coachOpts=Object.keys(USERS).filter(function(k){return USERS[k].role==='coach';}).map(function(k){return '<option value="'+k+'">'+USERS[k].name+'</option>';}).join('');
+  mc.innerHTML='<div class="pg-section-header" style="background:#7c3aed">🧍 Personal Classes - Log Session</div>'
+    +'<div class="card"><div class="card-title">📋 Log a Session</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'
+    +'<div class="form-row"><label class="form-label">Client</label><select class="form-select" id="psClient"><option value="">Select client...</option>'+clientOpts+'</select></div>'
+    +'<div class="form-row"><label class="form-label">Coach</label><select class="form-select" id="psCoach"><option value="">Select coach...</option>'+coachOpts+'</select></div></div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'
+    +'<div class="form-row"><label class="form-label">Date</label><input type="date" class="form-input" id="psDate" value="'+todayDate()+'"></div>'
+    +'<div class="form-row"><label class="form-label">Status</label><select class="form-select" id="psStatus"><option value="present">✓ Attended</option><option value="absent">✗ Did Not Attend</option></select></div></div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'
+    +'<div class="form-row"><label class="form-label">Start</label><input type="time" class="form-input" id="psStart"></div>'
+    +'<div class="form-row"><label class="form-label">End</label><input type="time" class="form-input" id="psEnd"></div></div>'
+    +'<div class="form-row"><label class="form-label">Notes</label><input class="form-input" id="psNotes" placeholder="Optional notes..."></div>'
+    +'<button class="btn btn-primary" onclick="logPersonalSession()">✅ Log Session</button></div>'
+    +'<div class="card"><div class="card-title">📅 Session History</div>'
+    +'<input class="search-bar" placeholder="Search..." oninput="filterPSSessions(this.value)">'
+    +'<div id="psHistory">'+renderPSHistory(sessions)+'</div></div>';
+  window._allPSSessions=sessions;
+}
+function logPersonalSession(){
+  var clientId=document.getElementById('psClient').value; var coach=document.getElementById('psCoach').value;
+  var date=document.getElementById('psDate').value; var status=document.getElementById('psStatus').value;
+  var start=document.getElementById('psStart').value; var end=document.getElementById('psEnd').value;
+  var notes=document.getElementById('psNotes').value.trim();
+  if(!clientId){alert('Select a client.');return;} if(!coach){alert('Select a coach.');return;} if(!start||!end){alert('Enter start and end time.');return;}
+  var client=DB.students.filter(function(s){return s.id===clientId;})[0];
+  if(!DB.personalSessions) DB.personalSessions=[];
+  DB.personalSessions.push({id:uid(),clientId:clientId,clientName:fullName(client),clientAge:client.classifier,coach:coach,date:date,start:start,end:end,status:status,notes:notes,loggedAt:tsNow()});
+  savePersonalSessions(); renderPersonalAttendance();
+}
+function renderPSHistory(sessions){
+  if(!sessions||!sessions.length) return '<div style="color:var(--sub);padding:14px 0">No sessions logged yet.</div>';
+  var sorted=sessions.slice().sort(function(a,b){return b.date.localeCompare(a.date);});
+  var html='<div class="table-wrap"><table><tr><th>Date</th><th>Client</th><th>Coach</th><th>Time</th><th>Status</th><th>Notes</th><th></th></tr>';
+  sorted.forEach(function(s){
+    html+='<tr><td>'+s.date+'</td><td><strong>'+h(s.clientName)+'</strong></td><td>'+coachName(s.coach)+'</td>'
+      +'<td>'+s.start+'-'+s.end+'</td><td><span class="badge '+(s.status==='present'?'green':'red')+'">'+(s.status==='present'?'Attended':'No Show')+'</span></td>'
+      +'<td style="font-size:.78rem;color:var(--sub)">'+h(s.notes||'-')+'</td>'
+      +'<td><button class="btn btn-danger btn-sm" onclick="deletePSSession(\''+s.id+'\')">🗑</button></td></tr>';
+  });
+  return html+'</table></div>';
+}
+function filterPSSessions(q){
+  document.getElementById('psHistory').innerHTML=renderPSHistory((window._allPSSessions||[]).filter(function(s){
+    return s.clientName.toLowerCase().indexOf(q.toLowerCase())>=0||coachName(s.coach).toLowerCase().indexOf(q.toLowerCase())>=0;
+  }));
+}
+function deletePSSession(id){
+  if(!confirm('Delete this session?')) return;
+  DB.personalSessions=DB.personalSessions.filter(function(s){return s.id!==id;}); savePersonalSessions(); renderPersonalAttendance();
+}
+
+// ─── REPORTS ──────────────────────────────────────────────────────────────────
+function renderReports(){
+  var mc=document.getElementById('mainContent'); var pg=getPG(currentPG);
+  var rows=DB.students.filter(function(s){return s.active&&s.playgroup===currentPG&&s.day!=='flexible';}).map(function(s){
+    var records=Object.keys(DB.attendance).filter(function(k){return k.indexOf('_'+s.id)>=0;}).map(function(k){return DB.attendance[k];}).filter(function(v){return v&&v.status;});
+    var present=records.filter(function(v){return v.status==='present';}).length;
+    var total=records.length;
+    return {s:s,total:total,present:present,absent:total-present,pct:total?Math.round(present/total*100):0};
+  });
+  window._reportRows=rows;
+  mc.innerHTML='<div class="pg-section-header" style="background:'+pg.color+'">'+pg.emoji+' '+pg.label+' - Reports</div>'
+    +(isAnyDay(currentPG)?'<div class="any-day-notice">🥷 Showing all sessions this student was marked across all dates.</div>':'')
+    +'<div class="card"><input class="search-bar" placeholder="Search..." oninput="filterReport(this.value)">'
+    +'<div id="reportTable">'+buildReportTable(rows)+'</div></div>'
+    +'<div class="card"><div class="card-title">📥 Export</div>'
+    +'<div style="display:flex;flex-wrap:wrap;gap:10px">'
+    +'<button class="btn btn-primary" onclick="exportCSV()">📊 Attendance CSV</button>'
+    +'<button class="btn btn-gold" onclick="exportPayrollCSV()">💰 Payroll CSV</button></div></div>';
+}
+function buildReportTable(rows){
+  if(!rows.length) return '<div style="color:var(--sub)">No data yet.</div>';
+  var html='<div class="table-wrap"><table><tr><th>Student</th><th>Day</th><th>Group</th><th>Sessions</th><th>Present</th><th>Absent</th><th>%</th></tr>';
+  rows.forEach(function(r){
+    var cls=r.pct>=80?'green':r.pct>=60?'gold':'red';
+    html+='<tr><td><strong>'+h(fullName(r.s))+'</strong></td><td>'+(r.s.day==='any'?'Any':r.s.day)+'</td><td>'+h(r.s.classifier)+'</td>'
+      +'<td>'+r.total+'</td><td style="color:var(--green);font-weight:700">'+r.present+'</td>'
+      +'<td style="color:var(--red);font-weight:700">'+r.absent+'</td><td><span class="badge '+cls+'">'+r.pct+'%</span></td></tr>';
+  });
+  return html+'</table></div>';
+}
+function filterReport(q){ document.getElementById('reportTable').innerHTML=buildReportTable((window._reportRows||[]).filter(function(r){return fullName(r.s).toLowerCase().indexOf(q.toLowerCase())>=0;})); }
+function exportCSV(){
+  var rows=['Student,Playgroup,Day,Classifier,Sessions,Present,Absent,Attendance%'];
+  DB.students.filter(function(s){return s.active&&s.playgroup===currentPG;}).forEach(function(s){
+    var records=Object.keys(DB.attendance).filter(function(k){return k.indexOf('_'+s.id)>=0;}).map(function(k){return DB.attendance[k];}).filter(function(v){return v&&v.status;});
+    var present=records.filter(function(v){return v.status==='present';}).length; var total=records.length;
+    rows.push('"'+fullName(s)+'",'+(getPG(s.playgroup)?getPG(s.playgroup).label:'')+','+(s.day==='any'?'Any':s.day)+','+s.classifier+','+total+','+present+','+(total-present)+','+(total?Math.round(present/total*100):0)+'%');
+  });
+  dlCSV(rows.join('\n'),'CFC_'+(getPG(currentPG)?getPG(currentPG).label:currentPG)+'_Attendance.csv');
+}
+function exportPayrollCSV(){
+  var rows=['Coach,Playgroup,Day,Date,Start,End'];
+  DB.shifts.filter(function(s){return !!s.date;}).forEach(function(s){
+    rows.push(coachName(s.coach)+','+(getPG(s.playgroup)?getPG(s.playgroup).label:s.playgroup)+','+s.day+','+s.date+','+s.startTime+','+s.endTime);
+  });
+  dlCSV(rows.join('\n'),'CFC_Payroll.csv');
+}
+function dlCSV(content,filename){ var a=document.createElement('a'); a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(content); a.download=filename; a.click(); }
+
+// ─── PAYROLL ──────────────────────────────────────────────────────────────────
+function renderPayroll(){
+  var mc=document.getElementById('mainContent'); var now=new Date();
+  var selMonth=DB.payrollMonth||(now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0'));
+  var yr=parseInt(selMonth.split('-')[0]); var mo=parseInt(selMonth.split('-')[1]);
+  var monthName=new Date(yr,mo-1,1).toLocaleString('en-ZA',{month:'long',year:'numeric'});
+  var grandTotal=0;
+  var rows=Object.keys(USERS).filter(function(k){return USERS[k].role==='coach';}).map(function(ck){
+    var u=USERS[ck]; var rate=COACH_RATES[ck]||100;
+    var shifts=DB.shifts.filter(function(s){
+      if(s.coach!==ck||!s.date) return false;
+      var p=s.date.split('-'); return parseInt(p[0])===yr&&parseInt(p[1])===mo;
+    });
+    var ps=(DB.personalSessions||[]).filter(function(s){
+      if(s.coach!==ck||!s.date) return false;
+      var p=s.date.split('-'); return parseInt(p[0])===yr&&parseInt(p[1])===mo;
+    });
+    var total=shifts.length+ps.length; var pay=total*rate; grandTotal+=pay;
+    return {ck:ck,u:u,rate:rate,shifts:shifts,ps:ps,total:total,pay:pay};
+  });
+  var html='<div class="card"><div class="card-title">💰 Monthly Payroll</div>'
+    +'<div style="background:#eff6ff;border:1.5px solid #2563eb;border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:.83rem;color:#1e40af">ℹ️ Only shifts with a confirmed date are counted.</div>'
+    +'<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">'
+    +'<div class="form-row" style="margin:0;flex:1;min-width:180px"><label class="form-label">Select Month</label>'
+    +'<input type="month" class="form-input" value="'+selMonth+'" onchange="setPayrollMonth(this.value)"></div>'
+    +'<div style="text-align:right"><div style="font-size:.78rem;color:var(--sub)">Total payout</div>'
+    +'<div style="font-size:1.8rem;font-weight:900;color:var(--green)">R'+grandTotal.toLocaleString()+'</div>'
+    +'<div style="font-size:.75rem;color:var(--sub)">'+monthName+'</div></div></div>';
+  rows.forEach(function(r){
+    html+='<div style="border:1.5px solid var(--border);border-radius:12px;padding:14px;margin-bottom:12px">'
+      +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">'
+      +'<div class="avatar" style="background:'+r.u.color+';width:40px;height:40px">'+r.u.avatar+'</div>'
+      +'<div style="flex:1"><div style="font-weight:800">'+r.u.name+'</div><div style="font-size:.76rem;color:var(--sub)">Rate: <strong>R'+r.rate+'/class</strong></div></div>'
+      +'<div style="text-align:right"><div style="font-size:1.5rem;font-weight:900;color:var(--green)">R'+r.pay.toLocaleString()+'</div><div style="font-size:.75rem;color:var(--sub)">'+r.total+' classes</div></div></div>'
+      +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center">'
+      +'<div style="background:#f1f5f9;border-radius:8px;padding:8px"><div style="font-size:1.2rem;font-weight:900;color:#2563eb">'+r.shifts.length+'</div><div style="font-size:.7rem;color:var(--sub)">Group shifts</div></div>'
+      +'<div style="background:#f1f5f9;border-radius:8px;padding:8px"><div style="font-size:1.2rem;font-weight:900;color:#7c3aed">'+r.ps.length+'</div><div style="font-size:.7rem;color:var(--sub)">Personal</div></div>'
+      +'<div style="background:#dcfce7;border-radius:8px;padding:8px"><div style="font-size:1.2rem;font-weight:900;color:var(--green)">R'+r.pay.toLocaleString()+'</div><div style="font-size:.7rem;color:var(--sub)">Total pay</div></div></div>';
+    if(r.shifts.length||r.ps.length){
+      html+='<div style="margin-top:10px;font-size:.78rem;color:var(--sub)">';
+      r.shifts.forEach(function(s){var pg=getPG(s.playgroup);html+='<div style="padding:3px 0;border-top:1px solid var(--border);display:flex;justify-content:space-between"><span>'+(pg?pg.emoji+' '+pg.label:s.playgroup)+' · '+s.day+' · '+s.date+'</span><span style="color:var(--green);font-weight:700">R'+r.rate+'</span></div>';});
+      r.ps.forEach(function(s){html+='<div style="padding:3px 0;border-top:1px solid var(--border);display:flex;justify-content:space-between"><span>🧍 Personal · '+h(s.clientName)+' · '+s.date+'</span><span style="color:var(--green);font-weight:700">R'+r.rate+'</span></div>';});
+      html+='</div>';
+    }
+    html+='</div>';
+  });
+  var undated=DB.shifts.filter(function(s){return !s.date;});
+  if(undated.length) html+='<div style="background:#fef3c7;border:1.5px solid #f59e0b;border-radius:10px;padding:12px 14px;margin-bottom:12px"><div style="font-weight:700;color:#92400e">⚠️ '+undated.length+' shift(s) have no date — excluded from payroll</div></div>';
+  html+='<button class="btn btn-gold" style="width:100%" onclick="exportPayrollCSV()">📥 Export Payroll CSV</button></div>';
+  mc.innerHTML=html;
+}
+function setPayrollMonth(v){DB.payrollMonth=v;savePayrollMonth();renderPayroll();}
+
+// ─── EXPENSES ─────────────────────────────────────────────────────────────────
+function renderExpenses(){
+  var mc=document.getElementById('mainContent'); var now=new Date();
+  var selMonth=DB.expenseMonth||(now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0'));
+  var yr=parseInt(selMonth.split('-')[0]); var mo=parseInt(selMonth.split('-')[1]);
+  var monthName=new Date(yr,mo-1,1).toLocaleString('en-ZA',{month:'long',year:'numeric'});
+  var exp=(DB.expenses&&DB.expenses[selMonth])||{};
+  var rent=exp.rent!=null?exp.rent:4500; var video=exp.video!=null?exp.video:2000; var jozi=exp.jozi!=null?exp.jozi:205;
+  var amanda=exp.amanda!=null?exp.amanda:0; var mike=exp.mike!=null?exp.mike:0; var extras=exp.extras||[];
+  var extrasTotal=extras.reduce(function(a,e){return a+Number(e.amount||0);},0);
+  var fixedTotal=rent+video+jozi+Number(amanda)+Number(mike)+extrasTotal;
+  var payrollTotal=0;
+  Object.keys(USERS).filter(function(k){return USERS[k].role==='coach';}).forEach(function(ck){
+    var rate=COACH_RATES[ck]||100;
+    var sh=DB.shifts.filter(function(s){if(s.coach!==ck||!s.date)return false;var p=s.date.split('-');return parseInt(p[0])===yr&&parseInt(p[1])===mo;}).length;
+    var ps=(DB.personalSessions||[]).filter(function(s){if(s.coach!==ck||!s.date)return false;var p=s.date.split('-');return parseInt(p[0])===yr&&parseInt(p[1])===mo;}).length;
+    payrollTotal+=(sh+ps)*rate;
+  });
+  var grand=fixedTotal+payrollTotal;
+  var html='<div class="card"><div class="card-title">🏦 Monthly Business Expenses</div>'
+    +'<div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap">'
+    +'<div class="form-row" style="margin:0;flex:1;min-width:180px"><label class="form-label">Select Month</label>'
+    +'<input type="month" class="form-input" value="'+selMonth+'" onchange="setExpenseMonth(this.value)"></div>'
+    +'<div style="text-align:right"><div style="font-size:.78rem;color:var(--sub)">Total outgoings</div>'
+    +'<div style="font-size:1.8rem;font-weight:900;color:var(--red)">R'+grand.toLocaleString()+'</div>'
+    +'<div style="font-size:.75rem;color:var(--sub)">'+monthName+'</div></div></div>'
+    +'<div style="font-size:.82rem;font-weight:700;color:var(--sub);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Fixed Costs</div>'
+    +expRow('Rent','rent',rent,selMonth,'Adjustable')
+    +expRow('Videography / Photography (Jared)','video',video,selMonth,'Adjustable')
+    +expRow('Jozi Kids Marketing','jozi',jozi,selMonth,'Adjustable')
+    +'<div style="font-size:.82rem;font-weight:700;color:var(--sub);margin:16px 0 8px;text-transform:uppercase;letter-spacing:.5px">Variable Costs</div>'
+    +expRow('Amanda - Admin','amanda',amanda,selMonth,'Enter monthly amount')
+    +expRow('Mike - Admin/Variable','mike',mike,selMonth,'Enter monthly amount')
+    +'<div style="font-size:.82rem;font-weight:700;color:var(--sub);margin:16px 0 8px;text-transform:uppercase;letter-spacing:.5px">Extra / Once-off Expenses</div>'
+    +'<div id="extraExpList">'+renderExtraExps(extras,selMonth)+'</div>'
+    +'<button class="btn btn-success btn-sm" style="margin-top:8px;width:100%" onclick="addExtraExp(\''+selMonth+'\')">+ Add Extra Expense</button>'
+    +'<div style="border-top:2px solid var(--border);margin:16px 0;padding-top:14px">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-weight:700">Fixed + Variable</span><span style="font-weight:900;font-size:1.1rem;color:var(--red)">R'+fixedTotal.toLocaleString()+'</span></div>'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-weight:700">Coach Payroll</span><span style="font-weight:900;font-size:1.1rem;color:var(--red)">R'+payrollTotal.toLocaleString()+'</span></div>'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;background:#fee2e2;border-radius:10px;padding:12px 14px">'
+    +'<span style="font-weight:900;font-size:1rem">Total Monthly Outgoings</span>'
+    +'<span style="font-weight:900;font-size:1.5rem;color:var(--red)">R'+grand.toLocaleString()+'</span></div></div>'
+    +'<button class="btn btn-gold" style="width:100%;margin-top:4px" onclick="exportExpensesCSV(\''+selMonth+'\')">📥 Export Expenses CSV</button></div>';
+  mc.innerHTML=html;
+}
+function expRow(label,key,val,month,hint){
+  return '<div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--border);flex-wrap:wrap">'
+    +'<div style="flex:1;min-width:140px"><div style="font-weight:600;font-size:.9rem">'+label+'</div><div style="font-size:.75rem;color:var(--sub)">'+hint+'</div></div>'
+    +'<div style="display:flex;align-items:center;gap:6px"><span style="font-weight:700;color:var(--sub)">R</span>'
+    +'<input type="number" value="'+val+'" min="0" style="width:110px;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:.95rem;font-weight:700;text-align:right" onchange="saveExpense(\''+key+'\',this.value,\''+month+'\')">'
+    +'</div></div>';
+}
+function renderExtraExps(extras,month){
+  if(!extras.length) return '<div style="color:var(--sub);font-size:.83rem;padding:8px 0">No extra expenses added yet.</div>';
+  return extras.map(function(e,i){
+    return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);flex-wrap:wrap">'
+      +'<div style="flex:1;min-width:120px"><div style="font-weight:600;font-size:.9rem">'+h(e.label||'Unnamed expense')+'</div></div>'
+      +'<div style="display:flex;align-items:center;gap:6px"><span style="font-weight:700;color:var(--sub)">R</span>'
+      +'<input type="number" value="'+(e.amount||0)+'" min="0" style="width:100px;padding:7px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:.92rem;font-weight:700;text-align:right" onchange="updateExtraAmt('+i+',this.value,\''+month+'\')">'
+      +'<button class="btn btn-danger btn-sm" onclick="deleteExtraExp('+i+',\''+month+'\')">🗑</button></div></div>';
+  }).join('');
+}
+function addExtraExp(month){
+  var label=prompt('Expense name:'); if(!label||!label.trim()) return;
+  if(!DB.expenses) DB.expenses={};
+  if(!DB.expenses[month]) DB.expenses[month]={};
+  if(!DB.expenses[month].extras) DB.expenses[month].extras=[];
+  DB.expenses[month].extras.push({label:label.trim(),amount:0});
+  saveExpenses(); renderExpenses();
+}
+function updateExtraAmt(idx,val,month){
+  if(!DB.expenses||!DB.expenses[month]||!DB.expenses[month].extras) return;
+  DB.expenses[month].extras[idx].amount=Number(val); saveExpenses(); renderExpenses();
+}
+function deleteExtraExp(idx,month){
+  if(!confirm('Remove this expense?')) return;
+  DB.expenses[month].extras.splice(idx,1); saveExpenses(); renderExpenses();
+}
+function saveExpense(key,val,month){
+  if(!DB.expenses) DB.expenses={};
+  if(!DB.expenses[month]) DB.expenses[month]={};
+  DB.expenses[month][key]=Number(val); saveExpenses(); renderExpenses();
+}
+function setExpenseMonth(v){DB.expenseMonth=v;saveExpenseMonth();renderExpenses();}
+function exportExpensesCSV(month){
+  var exp=(DB.expenses&&DB.expenses[month])||{};
+  var rows=['Category,Amount (R)','Rent,'+(exp.rent!=null?exp.rent:4500),'Videography/Photography,'+(exp.video!=null?exp.video:2000),'Jozi Kids Marketing,'+(exp.jozi!=null?exp.jozi:205),'Amanda Admin,'+(exp.amanda||0),'Mike Variable,'+(exp.mike||0)];
+  (exp.extras||[]).forEach(function(e){rows.push('"'+e.label+'",'+( e.amount||0));});
+  dlCSV(rows.join('\n'),'CFC_Expenses_'+month+'.csv');
+}
+
+// ─── COACH VIEWS ──────────────────────────────────────────────────────────────
+function renderMySchedule(){
+  var mc=document.getElementById('mainContent');
+  var myShifts=DB.shifts.filter(function(s){return s.coach===currentUser.key;});
+  var day=todayDay(); var ord=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+  var html='<div class="today-header"><div class="today-date">Hi '+currentUser.name+'! '+currentUser.avatar+'</div><div class="today-sub">'+todayFull()+'</div></div>'
+    +'<div class="card"><div class="card-title">📅 Your Shifts</div>';
+  if(myShifts.length){
+    ord.forEach(function(d){
+      var shifts=myShifts.filter(function(s){return s.day===d;}); if(!shifts.length) return;
+      var isToday=d===day;
+      html+='<div class="week-day has-shift'+(isToday?' today-day':'')+'"><div class="week-day-name">'+(isToday?'🟡 ':'')+d+(isToday?' (Today)':'')+'</div>';
+      shifts.forEach(function(s){var pg=getPG(s.playgroup);html+='<div class="week-day-info">'+(pg?pg.emoji+' <strong>'+pg.label+'</strong>':'')+' · '+s.startTime+'-'+s.endTime+(s.date?' · '+s.date:'')+'</div>';});
+      html+='</div>';
+    });
+  } else { html+='<div style="color:var(--sub);padding:14px 0">Amanda has not allocated any shifts yet.</div>'; }
+  mc.innerHTML=html+'</div>';
+}
+function renderMarkAttendance(){
+  var mc=document.getElementById('mainContent'); var day=todayDay(); var date=todayDate();
+  var myShifts=DB.shifts.filter(function(s){return s.coach===currentUser.key&&s.day===day;});
+  if(!myShifts.length){mc.innerHTML='<div class="card" style="text-align:center;padding:32px"><div style="font-size:3rem">📋</div><div style="font-weight:700;margin-top:12px">No shift today</div><div style="color:var(--sub);margin-top:6px">Contact Amanda if this is an error.</div></div>';return;}
+  var html='<div class="today-header"><div class="today-date">'+day+' Session</div><div class="today-sub">'+todayFull()+'</div></div>';
+  myShifts.forEach(function(shift){
+    var pg=getPG(shift.playgroup); var anyDay=isAnyDay(shift.playgroup);
+    var students=getStudentsForSession(shift.playgroup,date);
+    html+='<div style="background:'+(pg?pg.color:'#2563eb')+';color:#fff;border-radius:10px;padding:10px 14px;margin-bottom:8px;font-weight:700">'
+      +(pg?pg.emoji+' '+pg.label:'')+' · '+shift.startTime+'-'+shift.endTime
+      +(anyDay?' <span style="font-size:.75rem;opacity:.8">(mark who showed up today)</span>':'')+'</div>';
+    if(anyDay) html+='<div class="any-day-notice" style="margin-bottom:8px">All registered students shown — mark only those present today.</div>';
+    html+='<div class="card" style="margin-bottom:16px">'
+      +'<input class="search-bar" placeholder="Search..." oninput="filterCoachAtt(this.value,\''+shift.playgroup+'\',\''+date+'\',\'al_'+shift.id+'\')">'
+      +'<div id="al_'+shift.id+'">'+renderCoachAttRows(students,date)+'</div></div>';
+  });
+  mc.innerHTML=html;
+}
+function filterCoachAtt(q,pgId,date,listId){
+  var s=getStudentsForSession(pgId,date).filter(function(s){return fullName(s).toLowerCase().indexOf(q.toLowerCase())>=0;});
+  var el=document.getElementById(listId); if(el) el.innerHTML=renderCoachAttRows(s,date);
+}
+function renderCoachAttRows(students,date){
+  if(!students.length) return '<div style="color:var(--sub);padding:12px 0">No students for this session.</div>';
+  return students.map(function(s){
+    var a=DB.attendance[attKey(date,s.id)]||{};
+    return '<div class="student-row" id="row_'+s.id+'">'
+      +'<div style="flex:1"><div class="student-name">'+h(fullName(s))+'</div>'
+      +'<div style="display:flex;gap:5px;margin-top:2px"><span class="badge blue">'+h(s.classifier)+'</span>'
+      +(s.day==='any'?'<span class="badge grey">Any day</span>':'')
+      +'<span style="font-size:.7rem;color:var(--sub);margin-top:3px" id="ts_'+s.id+'">'+(a.timestamp?'✓ '+a.timestamp:'Not marked')+'</span></div>'
+      +'<input class="notes-input" placeholder="Notes..." value="'+h(a.notes||'')+'" onchange="updateNotes(\''+s.id+'\',\''+date+'\',this.value)"></div>'
+      +'<div class="att-btns">'
+      +'<button class="att-btn present'+(a.status==='present'?' active':'')+'" onclick="markAtt(\''+s.id+'\',\''+date+'\',\'present\')" id="bp_'+s.id+'">✓</button>'
+      +'<button class="att-btn absent'+(a.status==='absent'?' active':'')+'" onclick="markAtt(\''+s.id+'\',\''+date+'\',\'absent\')" id="ba_'+s.id+'">✗</button>'
+      +'</div></div>';
+  }).join('');
+}
+function renderMyStats(){
+  var mc=document.getElementById('mainContent');
+  var myShifts=DB.shifts.filter(function(s){return s.coach===currentUser.key&&!!s.date;});
+  var hrs=myShifts.reduce(function(acc,s){var sh=parseInt(s.startTime.split(':')[0])*60+parseInt(s.startTime.split(':')[1]);var eh=parseInt(s.endTime.split(':')[0])*60+parseInt(s.endTime.split(':')[1]);return acc+(eh-sh)/60;},0);
+  var ps=(DB.personalSessions||[]).filter(function(s){return s.coach===currentUser.key;}).length;
+  var rate=COACH_RATES[currentUser.key]||100; var pay=(myShifts.length+ps)*rate;
+  var html='<div class="card"><div class="card-title">📈 My Stats</div>'
+    +'<div class="stat-grid">'
+    +'<div class="stat-box blue"><div class="stat-num">'+myShifts.length+'</div><div class="stat-label">Shifts</div></div>'
+    +'<div class="stat-box green"><div class="stat-num">'+hrs.toFixed(1)+'</div><div class="stat-label">Hours</div></div>'
+    +'<div class="stat-box gold"><div class="stat-num">R'+pay+'</div><div class="stat-label">Est. Earnings</div></div>'
+    +'<div class="stat-box"><div class="stat-num" style="color:#7c3aed">'+ps+'</div><div class="stat-label">Personal Classes</div></div></div></div>'
+    +'<div class="card"><div class="card-title">📋 Shift History</div>';
+  if(myShifts.length){
+    html+='<div class="table-wrap"><table><tr><th>Playgroup</th><th>Day</th><th>Date</th><th>Time</th></tr>';
+    myShifts.forEach(function(s){var pg=getPG(s.playgroup);html+='<tr><td>'+(pg?pg.emoji+' '+pg.label:s.playgroup)+'</td><td>'+s.day+'</td><td>'+(s.date||'-')+'</td><td>'+s.startTime+'-'+s.endTime+'</td></tr>';});
+    html+='</table></div>';
+  } else {html+='<div style="color:var(--sub)">No confirmed shifts yet.</div>';}
+  mc.innerHTML=html+'</div>';
+}
+</script>
+</body>
+</html>
