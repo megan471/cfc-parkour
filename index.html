@@ -4,9 +4,22 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>CFC Parkour</title>
-<!-- Firebase CDN (no build step needed) -->
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<!-- Firebase CDN — loaded safely with fallback -->
+<script>
+// Minimal firebase stub so app runs even if CDN fails (local/preview)
+window._firebaseReady = false;
+window._useFirebase = false;
+</script>
+<script 
+  src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"
+  onload="window._fbAppLoaded=true"
+  onerror="window._fbAppLoaded=false">
+</script>
+<script 
+  src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"
+  onload="window._fbDbLoaded=true"
+  onerror="window._fbDbLoaded=false">
+</script>
 <style>
 :root{--green:#16a34a;--red:#dc2626;--grey:#6b7280;--blue:#2563eb;--gold:#f59e0b;--bg:#f1f5f9;--card:#fff;--text:#1e293b;--sub:#64748b;--border:#e2e8f0;--radius:12px;--shadow:0 2px 12px rgba(0,0,0,.08)}
 *{box-sizing:border-box;margin:0;padding:0;font-family:'Segoe UI',sans-serif}
@@ -174,8 +187,18 @@ var firebaseConfig = {
   messagingSenderId: "1094731390943",
   appId: "1:1094731390943:web:263f40c341e5233b5cee6a"
 };
-firebase.initializeApp(firebaseConfig);
-var fbdb = firebase.database();
+var fbdb = null;
+var _useFirebase = false;
+try {
+  if(typeof firebase !== 'undefined' && firebase.initializeApp) {
+    firebase.initializeApp(firebaseConfig);
+    fbdb = firebase.database();
+    _useFirebase = true;
+  }
+} catch(e) {
+  console.warn('Firebase not available, using localStorage fallback:', e.message);
+  _useFirebase = false;
+}
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
 var USERS = {
@@ -312,6 +335,7 @@ function setSyncStatus(state) {
 
 // Write a specific path to Firebase
 function fbSet(path, value, cb) {
+  if(!_useFirebase||!fbdb){localSave();if(cb)cb(null);return;}
   setSyncStatus('pending');
   fbdb.ref(path).set(value, function(err){
     setSyncStatus(err ? 'err' : 'ok');
@@ -319,6 +343,7 @@ function fbSet(path, value, cb) {
   });
 }
 function fbUpdate(path, value, cb) {
+  if(!_useFirebase||!fbdb){localSave();if(cb)cb(null);return;}
   setSyncStatus('pending');
   fbdb.ref(path).update(value, function(err){
     setSyncStatus(err ? 'err' : 'ok');
@@ -326,11 +351,23 @@ function fbUpdate(path, value, cb) {
   });
 }
 function fbRemove(path, cb) {
+  if(!_useFirebase||!fbdb){localSave();if(cb)cb(null);return;}
   setSyncStatus('pending');
   fbdb.ref(path).remove(function(err){
     setSyncStatus(err ? 'err' : 'ok');
     if(cb) cb(err);
   });
+}
+function localSave(){
+  try{
+    var snap={
+      students:DB.students,attendance:DB.attendance,shifts:DB.shifts,
+      personalSessions:DB.personalSessions,correctionLog:DB.correctionLog,
+      coachPins:DB.coachPins,expenses:DB.expenses,
+      payrollMonth:DB.payrollMonth,expenseMonth:DB.expenseMonth
+    };
+    localStorage.setItem('cfcParkourDB3',JSON.stringify(snap));
+  }catch(e){}
 }
 
 // Save whole DB snapshot (used for bulk ops)
@@ -382,6 +419,7 @@ function unSafeKey(k) { return k; } // keys don't need reversing — we store or
 
 // ─── LOAD FROM FIREBASE ───────────────────────────────────────────────────────
 function loadFromFirebase(cb) {
+  if(!_useFirebase||!fbdb){ loadFromLocalStorage(); cb(); return; }
   fbdb.ref('cfcParkour').once('value', function(snap) {
     var data = snap.val() || {};
     // Merge student active flags with master
@@ -459,6 +497,7 @@ function loadFromLocalStorage() {
 
 // Real-time listener — updates DB.attendance live when other coaches mark attendance
 function startRealtimeListeners() {
+  if(!_useFirebase||!fbdb){ setSyncStatus('ok'); return; }
   fbdb.ref('cfcParkour/attendance').on('value', function(snap){
     DB.attendance = snap.val() || {};
   });
@@ -469,7 +508,6 @@ function startRealtimeListeners() {
   fbdb.ref('cfcParkour/coachPins').on('value', function(snap){
     DB.coachPins = snap.val() || {};
   });
-  // Online/offline detection
   fbdb.ref('.info/connected').on('value', function(snap){
     var online = snap.val() === true;
     var banner = document.getElementById('offlineBanner');
@@ -560,9 +598,11 @@ function tryLogin(){
   }
 }
 function logout(){
-  fbdb.ref('cfcParkour/attendance').off();
-  fbdb.ref('cfcParkour/shifts').off();
-  fbdb.ref('cfcParkour/coachPins').off();
+  if(_useFirebase&&fbdb){
+    fbdb.ref('cfcParkour/attendance').off();
+    fbdb.ref('cfcParkour/shifts').off();
+    fbdb.ref('cfcParkour/coachPins').off();
+  }
   currentUser=null; pinBuffer=''; selectedUserKey=null; currentPG='aisj'; currentTab='';
   document.getElementById('app').classList.add('hidden');
   document.getElementById('loginScreen').classList.remove('hidden');
