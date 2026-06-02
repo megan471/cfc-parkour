@@ -203,14 +203,20 @@ try {
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
 var USERS = {
   amanda:{name:'Amanda',role:'admin',pin:'0000',avatar:'👑',color:'#7c3aed'},
-  jayden:{name:'Jayden',role:'coach',pin:'1111',avatar:'🏃',color:'#059669'},
-  mike:  {name:'Mike',  role:'coach',pin:'2222',avatar:'🏃',color:'#0284c7'},
-  rob:   {name:'Rob',   role:'coach',pin:'3333',avatar:'🏃',color:'#d97706'},
-  jared: {name:'Jared', role:'coach',pin:'4444',avatar:'🏃',color:'#db2777'},
-  john:  {name:'John',  role:'coach',pin:'5555',avatar:'🏃',color:'#7c3aed'},
-  rooney:{name:'Rooney',role:'coach',pin:'6666',avatar:'🏃',color:'#dc2626'}
+  coaches:{name:'Coaches',role:'coach',pin:'1234',avatar:'🏃',color:'#2563eb'}
+};
+// Individual coach profiles (not login users — used for claiming/attribution)
+var COACHES = {
+  jayden:{name:'Jayden',color:'#059669'},
+  mike:  {name:'Mike',  color:'#0284c7'},
+  rob:   {name:'Rob',   color:'#d97706'},
+  jared: {name:'Jared', color:'#db2777'},
+  john:  {name:'John',  color:'#7c3aed'},
+  rooney:{name:'Rooney',color:'#dc2626'}
 };
 var COACH_RATES = {jayden:100,mike:350,rob:100,jared:100,john:100,rooney:100};
+// Which coach is currently active inside the coaches portal
+var activeCoach = null;
 var PLAYGROUPS = [
   {id:'aisj',    label:'AISJ',            color:'#2563eb',emoji:'🏫',classifierLabel:'Grade'},
   {id:'gymnat',  label:'Gymnat',          color:'#059669',emoji:'🤸',classifierLabel:'Age'},
@@ -528,7 +534,7 @@ function attKey(d,sid){ return safeKey(d+'_'+sid); }
 function uid(){ return 'id_'+Date.now()+'_'+Math.random().toString(36).slice(2,7); }
 function getPG(id){ return PLAYGROUPS.filter(function(p){return p.id===id;})[0]; }
 function isAnyDay(pgId){ return ANY_DAY_GROUPS.indexOf(pgId)>=0; }
-function coachName(k){ return USERS[k]?USERS[k].name:k; }
+function coachName(k){ if(!k) return 'Unclaimed'; return COACHES[k]?COACHES[k].name:(USERS[k]?USERS[k].name:k); }
 function fullName(s){ return (s.first+' '+s.last).trim(); }
 function getDaysForPG(pgId){ return PG_DAYS[pgId]||['Monday','Tuesday','Wednesday','Thursday','Friday']; }
 function h(str){ return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
@@ -587,9 +593,10 @@ function tryLogin(){
   var activePin=(DB.coachPins||{})[selectedUserKey]||u.pin;
   if(pinBuffer===activePin){
     currentUser=Object.assign({key:selectedUserKey},u);
+    activeCoach=null; // reset active coach selection
     document.getElementById('loginScreen').classList.add('hidden');
     document.getElementById('app').classList.remove('hidden');
-    document.getElementById('topbarUser').textContent=u.avatar+' '+u.name+' · '+(u.role==='admin'?'Super Admin':'Coach');
+    document.getElementById('topbarUser').textContent=u.avatar+' '+u.name+' · '+(u.role==='admin'?'Super Admin':'Coaches Portal');
     startRealtimeListeners();
     initApp();
   } else {
@@ -603,7 +610,7 @@ function logout(){
     fbdb.ref('cfcParkour/shifts').off();
     fbdb.ref('cfcParkour/coachPins').off();
   }
-  currentUser=null; pinBuffer=''; selectedUserKey=null; currentPG='aisj'; currentTab='';
+  currentUser=null; pinBuffer=''; selectedUserKey=null; currentPG='aisj'; currentTab=''; activeCoach=null;
   document.getElementById('app').classList.add('hidden');
   document.getElementById('loginScreen').classList.remove('hidden');
   document.getElementById('userSelect').classList.remove('hidden');
@@ -635,7 +642,7 @@ function buildNavTabs(){
     ?[{id:'overview',label:'📊 Overview'},{id:'attendance',label:'✅ Attendance'},{id:'schedule',label:'📅 Schedule'},
       {id:'students',label:'👥 Students'},{id:'corrections',label:'✏️ Corrections'},{id:'reports',label:'📋 Reports'},
       {id:'payroll',label:'💰 Payroll'},{id:'expenses',label:'🏦 Expenses'},{id:'pinmanage',label:'🔐 PINs'}]
-    :[{id:'mySchedule',label:'📅 My Schedule'},{id:'markAttendance',label:'✅ Mark Attendance'},{id:'myStats',label:'📈 My Stats'}];
+    :[{id:'coachPortal',label:'🏃 Coach Portal'},{id:'markAttendance',label:'✅ Mark Attendance'},{id:'myStats',label:'📈 My Stats'}];
   var nt=document.getElementById('navTabs'); nt.innerHTML='';
   if(!currentTab||!tabs.filter(function(t){return t.id===currentTab;}).length) currentTab=tabs[0].id;
   tabs.forEach(function(t){
@@ -664,7 +671,7 @@ function renderTab(id){
   else if(id==='payroll') renderPayroll();
   else if(id==='expenses') renderExpenses();
   else if(id==='pinmanage') renderPINManage();
-  else if(id==='mySchedule') renderMySchedule();
+  else if(id==='coachPortal') renderCoachPortal();
   else if(id==='markAttendance') renderMarkAttendance();
   else if(id==='myStats') renderMyStats();
 }
@@ -851,6 +858,7 @@ function renderPINManage(){
   var pins=DB.coachPins||{};
   var html='<div class="card"><div class="card-title">🔐 Coach PIN Management</div>'
     +'<div style="font-size:.83rem;color:var(--sub);margin-bottom:16px">Changes sync to Firebase instantly.</div>';
+  // Show coaches shared PIN + individual override note
   Object.keys(USERS).filter(function(k){return USERS[k].role==='coach';}).forEach(function(key){
     var u=USERS[key]; var cur=pins[key]||u.pin;
     html+='<div style="display:flex;align-items:center;gap:12px;padding:14px 0;border-bottom:1px solid var(--border);flex-wrap:wrap">'
@@ -876,10 +884,11 @@ function savePin(k){
 function renderScheduleAdmin(){
   var mc=document.getElementById('mainContent');
   var pgOpts=PLAYGROUPS.map(function(p){return '<option value="'+p.id+'">'+p.emoji+' '+p.label+'</option>';}).join('');
-  var coachOpts=Object.keys(USERS).filter(function(k){return USERS[k].role==='coach';}).map(function(k){return '<option value="'+k+'">'+USERS[k].avatar+' '+USERS[k].name+'</option>';}).join('');
-  mc.innerHTML='<div class="card"><div class="card-title">📅 Allocate Coach Shift</div>'
-    +'<div class="form-row"><label class="form-label">1. Coach</label>'
-    +'<select class="form-select" id="shCoach"><option value="">Select coach...</option>'+coachOpts+'</select></div>'
+  var coachOpts=Object.keys(COACHES).map(function(k){return '<option value="'+k+'">'+COACHES[k].name+'</option>';}).join('');
+  mc.innerHTML='<div class="card"><div class="card-title">📅 Release Shift for Coaches</div>'
+    +'<div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:.83rem;color:#15803d;">ℹ️ Shifts are released to the pool — coaches claim them from the Coaches Portal.</div>'
+    +'<div class="form-row"><label class="form-label">1. Preferred Coach (optional — leave blank to release to all)</label>'
+    +'<select class="form-select" id="shCoach"><option value="">Any coach</option>'+coachOpts+'</select></div>'
     +'<div class="form-row"><label class="form-label">2. Playgroup</label>'
     +'<select class="form-select" id="shPG" onchange="updateSlots()"><option value="">-- Choose playgroup --</option>'+pgOpts+'</select></div>'
     +'<div class="form-row"><label class="form-label">3. Day & Time</label>'
@@ -947,7 +956,7 @@ function addShift(){
   if(!day){alert('Please select a day/time slot.');return;}
   if(!start||!end){alert('Please enter start and end time.');return;}
   if(!date){alert('Date is required for payroll tracking.');return;}
-  DB.shifts.push({id:uid(),coach:coach,playgroup:pgId,day:day,date:date,startTime:start,endTime:end});
+  DB.shifts.push({id:uid(),coach:null,playgroup:pgId,day:day,date:date,startTime:start,endTime:end,createdBy:coach});
   saveShifts();
   document.getElementById('shiftList').innerHTML=renderShiftList('all');
   document.querySelectorAll('.shift-slot-btn').forEach(function(b){b.classList.remove('selected');});
@@ -1384,26 +1393,164 @@ function exportExpensesCSV(month){
 }
 
 // ─── COACH VIEWS ──────────────────────────────────────────────────────────────
-function renderMySchedule(){
+// renderMySchedule removed — replaced by renderCoachPortal
+// ─── COACH PORTAL ────────────────────────────────────────────────────────────
+function renderCoachPortal(){
   var mc=document.getElementById('mainContent');
-  var myShifts=DB.shifts.filter(function(s){return s.coach===currentUser.key;});
-  var day=todayDay(); var ord=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
-  var html='<div class="today-header"><div class="today-date">Hi '+currentUser.name+'! '+currentUser.avatar+'</div><div class="today-sub">'+todayFull()+'</div></div>'
-    +'<div class="card"><div class="card-title">📅 Your Shifts</div>';
-  if(myShifts.length){
-    ord.forEach(function(d){
-      var shifts=myShifts.filter(function(s){return s.day===d;}); if(!shifts.length) return;
-      var isToday=d===day;
-      html+='<div class="week-day has-shift'+(isToday?' today-day':'')+'"><div class="week-day-name">'+(isToday?'🟡 ':'')+d+(isToday?' (Today)':'')+'</div>';
-      shifts.forEach(function(s){var pg=getPG(s.playgroup);html+='<div class="week-day-info">'+(pg?pg.emoji+' <strong>'+pg.label+'</strong>':'')+' · '+s.startTime+'-'+s.endTime+(s.date?' · '+s.date:'')+'</div>';});
-      html+='</div>';
+  // If no coach selected yet, show coach selector
+  if(!activeCoach){
+    var html='<div class="today-header"><div class="today-date">🏃 Coaches Portal</div><div class="today-sub">'+todayFull()+' — Select your name to continue</div></div>'
+      +'<div class="card"><div class="card-title">Who are you?</div>'
+      +'<div style="display:grid;gap:10px;">';
+    Object.keys(COACHES).forEach(function(key){
+      var c=COACHES[key];
+      var summary=getCoachShiftSummary(key);
+      html+='<div id="coach-btn-'+key+'" data-key="'+key+'" class="coach-selector-btn" style="display:flex;align-items:center;gap:12px;padding:14px 16px;border:2px solid var(--border);border-radius:12px;background:#f8fafc;cursor:pointer;margin-bottom:4px;">'
+        +'<div style="width:40px;height:40px;border-radius:50%;background:'+c.color+';display:flex;align-items:center;justify-content:center;font-size:1.4rem;font-weight:800;color:#fff;flex-shrink:0;">'+c.name[0]+'</div>'
+        +'<div><div style="font-weight:700;font-size:1rem;">'+c.name+'</div>'
+        +'<div style="font-size:.78rem;color:var(--sub);">'+summary+'</div></div>'
+        +'</div>';
     });
-  } else { html+='<div style="color:var(--sub);padding:14px 0">Amanda has not allocated any shifts yet.</div>'; }
-  mc.innerHTML=html+'</div>';
+    html+='</div></div>';
+    mc.innerHTML=html;
+    // Attach click handlers after DOM is set
+    document.querySelectorAll('.coach-selector-btn').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        selectActiveCoach(this.getAttribute('data-key'));
+      });
+      btn.addEventListener('mouseover', function(){this.style.borderColor='#2563eb';this.style.background='#eff6ff';});
+      btn.addEventListener('mouseout', function(){this.style.borderColor='var(--border)';this.style.background='#f8fafc';});
+    });
+    return;
+  }
+  // Coach selected — show their dashboard
+  var coach=COACHES[activeCoach];
+  var myShifts=DB.shifts.filter(function(s){return s.coach===activeCoach;});
+  var unclaimed=DB.shifts.filter(function(s){return !s.coach;});
+  var today=todayDate(); var todayDay2=todayDay();
+
+  var html='<div style="background:'+coach.color+';color:#fff;border-radius:var(--radius);padding:14px 16px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;">'
+    +'<div><div style="font-weight:900;font-size:1.1rem;">👋 Hi '+coach.name+'!</div><div style="opacity:.8;font-size:.85rem;">'+todayFull()+'</div></div>'
+    +'<button onclick="activeCoach=null;renderCoachPortal();" style="background:rgba(255,255,255,.2);border:none;color:#fff;padding:6px 12px;border-radius:8px;cursor:pointer;font-size:.82rem;font-weight:600;">Switch Coach</button>'
+    +'</div>';
+
+  // Stats
+  var todayShifts=myShifts.filter(function(s){return s.day===todayDay2;});
+  html+='<div class="stat-grid">'
+    +'<div class="stat-box blue"><div class="stat-num">'+myShifts.length+'</div><div class="stat-label">My Shifts</div></div>'
+    +'<div class="stat-box gold"><div class="stat-num">'+todayShifts.length+'</div><div class="stat-label">Today</div></div>'
+    +'<div class="stat-box green"><div class="stat-num">'+getCoachHours(activeCoach).toFixed(1)+'</div><div class="stat-label">Hours</div></div>'
+    +'<div class="stat-box"><div class="stat-num" style="color:#7c3aed;">'+unclaimed.length+'</div><div class="stat-label">Available</div></div>'
+    +'</div>';
+
+  // Unclaimed shifts available to claim
+  if(unclaimed.length){
+    html+='<div class="card"><div class="card-title">⚡ Available Shifts — Claim One</div>';
+    var ord=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+    var sorted=unclaimed.slice().sort(function(a,b){
+      if(a.date&&b.date) return a.date.localeCompare(b.date);
+      return ord.indexOf(a.day)-ord.indexOf(b.day);
+    });
+    sorted.forEach(function(s){
+      var pg=getPG(s.playgroup);
+      html+='<div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--border);">'
+        +'<div style="flex:1">'
+        +'<div style="font-weight:700;font-size:.95rem;">'+(pg?pg.emoji+' '+pg.label:s.playgroup)+'</div>'
+        +'<div style="font-size:.82rem;color:var(--sub);margin-top:2px;">'+s.day+(s.date?' · '+s.date:'')+' · '+s.startTime+'–'+s.endTime+'</div>'
+        +'</div>'
+        +'<button data-sid="'+s.id+'" onclick="claimShift(this.getAttribute(\'data-sid\'))" style="background:#2563eb;color:#fff;border:none;padding:9px 16px;border-radius:8px;font-weight:700;font-size:.82rem;cursor:pointer;">Claim</button>'
+        +'</div>';
+    });
+    html+='</div>';
+  } else {
+    html+='<div class="card" style="text-align:center;padding:20px;"><div style="font-size:2rem;">✅</div><div style="font-weight:700;margin-top:8px;">No unclaimed shifts right now</div><div style="color:var(--sub);font-size:.85rem;margin-top:4px;">Amanda will release more shifts soon.</div></div>';
+  }
+
+  // My claimed shifts
+  if(myShifts.length){
+    html+='<div class="card"><div class="card-title">📅 My Claimed Shifts</div>';
+    var ord2=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+    var mySorted=myShifts.slice().sort(function(a,b){
+      if(a.date&&b.date) return a.date.localeCompare(b.date);
+      return ord2.indexOf(a.day)-ord2.indexOf(b.day);
+    });
+    mySorted.forEach(function(s){
+      var pg=getPG(s.playgroup);
+      var isToday=s.day===todayDay2;
+      html+='<div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--border);'+(isToday?'background:#fffbeb;border-radius:8px;padding:12px;margin-bottom:4px;':'')+'"">'
+        +'<div style="flex:1">'
+        +(isToday?'<span style="background:#fef3c7;color:#d97706;font-size:.7rem;font-weight:700;padding:2px 7px;border-radius:20px;margin-bottom:4px;display:inline-block;">🟡 TODAY</span><br/>':'')
+        +'<div style="font-weight:700;font-size:.95rem;">'+(pg?pg.emoji+' '+pg.label:s.playgroup)+'</div>'
+        +'<div style="font-size:.82rem;color:var(--sub);margin-top:2px;">'+s.day+(s.date?' · '+s.date:'')+' · '+s.startTime+'–'+s.endTime+'</div>'
+        +'</div>'
+        +'<button data-sid="'+s.id+'" onclick="releaseShift(this.getAttribute(\'data-sid\'))" style="background:#fee2e2;color:#dc2626;border:none;padding:7px 12px;border-radius:8px;font-weight:700;font-size:.78rem;cursor:pointer;">Release</button>'
+        +'</div>';
+    });
+    html+='</div>';
+  }
+
+  // Full schedule (all coaches)
+  html+='<div class="card"><div class="card-title">📋 Full Schedule — All Coaches</div>';
+  var allClaimed=DB.shifts.filter(function(s){return s.coach;});
+  if(allClaimed.length){
+    html+='<div class="table-wrap"><table><tr><th>Coach</th><th>Group</th><th>Day</th><th>Time</th><th>Date</th></tr>';
+    allClaimed.slice().sort(function(a,b){return (a.date||'').localeCompare(b.date||'');}).forEach(function(s){
+      var pg=getPG(s.playgroup);
+      var cc=COACHES[s.coach];
+      html+='<tr><td><span style="background:'+(cc?cc.color:'#64748b')+'22;color:'+(cc?cc.color:'#64748b')+';padding:2px 8px;border-radius:20px;font-weight:700;font-size:.78rem;">'+(cc?cc.name:s.coach)+'</span></td>'
+        +'<td>'+(pg?pg.emoji+' '+pg.label:s.playgroup)+'</td><td>'+s.day+'</td>'
+        +'<td style="font-weight:600;color:#2563eb;">'+s.startTime+'–'+s.endTime+'</td>'
+        +'<td>'+(s.date||'—')+'</td></tr>';
+    });
+    html+='</table></div>';
+  } else {
+    html+='<div style="color:var(--sub);font-size:.85rem;">No shifts claimed yet.</div>';
+  }
+  html+='</div>';
+
+  mc.innerHTML=html;
 }
+
+function selectActiveCoach(key){
+  activeCoach=key;
+  renderCoachPortal();
+  // Also switch nav tab to portal
+  document.querySelectorAll('.nav-tab').forEach(function(t){t.classList.remove('active');});
+  document.querySelector('.nav-tab')&&document.querySelector('.nav-tab').classList.add('active');
+}
+
+function claimShift(id){
+  var s=DB.shifts.filter(function(x){return x.id===id;})[0];
+  if(!s){return;}
+  if(s.coach){alert('This shift was just claimed by someone else!');renderCoachPortal();return;}
+  s.coach=activeCoach;
+  saveShifts();
+  renderCoachPortal();
+}
+
+function releaseShift(id){
+  if(!confirm('Release this shift back to the unclaimed pool?')) return;
+  var s=DB.shifts.filter(function(x){return x.id===id;})[0];
+  if(s){s.coach=null; saveShifts(); renderCoachPortal();}
+}
+
+function getCoachHours(key){
+  return DB.shifts.filter(function(s){return s.coach===key&&s.startTime&&s.endTime;}).reduce(function(acc,s){
+    var sh=parseInt(s.startTime.split(':')[0])*60+parseInt(s.startTime.split(':')[1]);
+    var eh=parseInt(s.endTime.split(':')[0])*60+parseInt(s.endTime.split(':')[1]);
+    return acc+(eh-sh)/60;
+  },0);
+}
+
+function getCoachShiftSummary(key){
+  var claimed=DB.shifts.filter(function(s){return s.coach===key;}).length;
+  var hrs=getCoachHours(key).toFixed(1);
+  return claimed+' shifts · '+hrs+' hrs';
+}
+
 function renderMarkAttendance(){
   var mc=document.getElementById('mainContent'); var day=todayDay(); var date=todayDate();
-  var myShifts=DB.shifts.filter(function(s){return s.coach===currentUser.key&&s.day===day;});
+  var myShifts=DB.shifts.filter(function(s){return s.coach===activeCoach&&s.day===day;});
   if(!myShifts.length){mc.innerHTML='<div class="card" style="text-align:center;padding:32px"><div style="font-size:3rem">📋</div><div style="font-weight:700;margin-top:12px">No shift today</div><div style="color:var(--sub);margin-top:6px">Contact Amanda if this is an error.</div></div>';return;}
   var html='<div class="today-header"><div class="today-date">'+day+' Session</div><div class="today-sub">'+todayFull()+'</div></div>';
   myShifts.forEach(function(shift){
@@ -1441,15 +1588,15 @@ function renderCoachAttRows(students,date){
 }
 function renderMyStats(){
   var mc=document.getElementById('mainContent');
-  var myShifts=DB.shifts.filter(function(s){return s.coach===currentUser.key&&!!s.date;});
+  var myShifts=DB.shifts.filter(function(s){return s.coach===activeCoach&&!!s.date;});
   var hrs=myShifts.reduce(function(acc,s){var sh=parseInt(s.startTime.split(':')[0])*60+parseInt(s.startTime.split(':')[1]);var eh=parseInt(s.endTime.split(':')[0])*60+parseInt(s.endTime.split(':')[1]);return acc+(eh-sh)/60;},0);
-  var ps=(DB.personalSessions||[]).filter(function(s){return s.coach===currentUser.key;}).length;
-  var rate=COACH_RATES[currentUser.key]||100; var pay=(myShifts.length+ps)*rate;
+  var ps=(DB.personalSessions||[]).filter(function(s){return s.coach===activeCoach;}).length;
+  // Pay rates hidden from coaches — admin only
   var html='<div class="card"><div class="card-title">📈 My Stats</div>'
     +'<div class="stat-grid">'
     +'<div class="stat-box blue"><div class="stat-num">'+myShifts.length+'</div><div class="stat-label">Shifts</div></div>'
     +'<div class="stat-box green"><div class="stat-num">'+hrs.toFixed(1)+'</div><div class="stat-label">Hours</div></div>'
-    +'<div class="stat-box gold"><div class="stat-num">R'+pay+'</div><div class="stat-label">Est. Earnings</div></div>'
+    +'<div class="stat-box gold"><div class="stat-num">'+ps+'</div><div class="stat-label">Personal Classes</div></div>'
     +'<div class="stat-box"><div class="stat-num" style="color:#7c3aed">'+ps+'</div><div class="stat-label">Personal Classes</div></div></div></div>'
     +'<div class="card"><div class="card-title">📋 Shift History</div>';
   if(myShifts.length){
