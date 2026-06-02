@@ -884,14 +884,11 @@ function savePin(k){
 function renderScheduleAdmin(){
   var mc=document.getElementById('mainContent');
   var pgOpts=PLAYGROUPS.map(function(p){return '<option value="'+p.id+'">'+p.emoji+' '+p.label+'</option>';}).join('');
-  var coachOpts=Object.keys(COACHES).map(function(k){return '<option value="'+k+'">'+COACHES[k].name+'</option>';}).join('');
-  mc.innerHTML='<div class="card"><div class="card-title">📅 Release Shift for Coaches</div>'
-    +'<div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:.83rem;color:#15803d;">ℹ️ Shifts are released to the pool — coaches claim them from the Coaches Portal.</div>'
-    +'<div class="form-row"><label class="form-label">1. Preferred Coach (optional — leave blank to release to all)</label>'
-    +'<select class="form-select" id="shCoach"><option value="">Any coach</option>'+coachOpts+'</select></div>'
-    +'<div class="form-row"><label class="form-label">2. Playgroup</label>'
+  mc.innerHTML='<div class="card"><div class="card-title">📅 Release a Shift</div>'
+    +'<div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:.83rem;color:#15803d;">✅ Set the playgroup, day, time and date — the shift goes straight to the coaches pool for anyone to claim.</div>'
+    +'<div class="form-row"><label class="form-label">1. Playgroup</label>'
     +'<select class="form-select" id="shPG" onchange="updateSlots()"><option value="">-- Choose playgroup --</option>'+pgOpts+'</select></div>'
-    +'<div class="form-row"><label class="form-label">3. Day & Time</label>'
+    +'<div class="form-row"><label class="form-label">2. Day & Time</label>'
     +'<div id="slotGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px"><div style="grid-column:span 2;color:var(--sub);font-size:.85rem">Select a playgroup first</div></div>'
     +'<input type="hidden" id="shDay"><input type="hidden" id="shStart"><input type="hidden" id="shEnd">'
     +'<div id="slotSelected" style="margin-top:10px;font-size:.85rem;color:var(--sub);padding:8px 12px;background:#f8fafc;border-radius:8px;border:1.5px solid var(--border)">No slot selected</div></div>'
@@ -899,15 +896,18 @@ function renderScheduleAdmin(){
     +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'
     +'<div><label class="form-label">Start</label><input type="time" class="form-input" id="manualStart" onchange="applyManualTime()"></div>'
     +'<div><label class="form-label">End</label><input type="time" class="form-input" id="manualEnd" onchange="applyManualTime()"></div></div></div>'
-    +'<div class="form-row"><label class="form-label">4. Date <span style="color:var(--red);font-size:.78rem">★ Required for payroll</span></label>'
+    +'<div class="form-row"><label class="form-label">3. Date <span style="color:var(--red);font-size:.78rem">★ Required for payroll</span></label>'
     +'<input type="date" class="form-input" id="shDate" value="'+todayDate()+'"></div>'
-    +'<button class="btn btn-primary" style="width:100%" onclick="addShift()">+ Allocate Shift</button></div>'
+    +'<button class="btn btn-primary" style="width:100%" onclick="addShift()">🚀 Release Shift to Coaches</button></div>'
     +'<div class="card"><div class="card-title">📋 All Shifts</div>'
     +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">'
     +'<button class="btn btn-sm" style="background:#f1f5f9" onclick="filterShifts(\'all\')">All</button>'
-    +PLAYGROUPS.map(function(p){return '<button class="btn btn-sm" style="background:'+p.color+'22;color:'+p.color+'" onclick="filterShifts(\''+p.id+'\')">'+p.emoji+' '+p.label+'</button>';}).join('')
+    +'<button class="btn btn-sm" style="background:#dcfce7;color:#16a34a" onclick="filterShifts(\'claimed\')">✓ Claimed</button>'
+    +'<button class="btn btn-sm" style="background:#fef3c7;color:#d97706" onclick="filterShifts(\'unclaimed\')">⏳ Unclaimed</button>'
+    +PLAYGROUPS.map(function(p){return '<button class="btn btn-sm" style="background:'+p.color+'22;color:'+p.color+'" onclick="filterShifts(\"'+p.id+'\")" >'+p.emoji+' '+p.label+'</button>';}).join('')
     +'</div><div id="shiftList">'+renderShiftList('all')+'</div></div>';
 }
+
 function updateSlots(){
   var pgId=document.getElementById('shPG')?document.getElementById('shPG').value:'';
   var grid=document.getElementById('slotGrid'); var manualRow=document.getElementById('manualTimeRow'); var sel=document.getElementById('slotSelected');
@@ -949,23 +949,27 @@ function applyManualTime(){
   if(s&&e&&day){sel.innerHTML='<strong>Personal</strong> · <strong>'+day+'</strong> · <strong>'+s+' - '+e+'</strong>'; sel.style.color='#7c3aed';}
 }
 function addShift(){
-  var coach=document.getElementById('shCoach').value; var pgId=document.getElementById('shPG').value;
+  var pgId=document.getElementById('shPG').value;
   var day=document.getElementById('shDay').value; var date=document.getElementById('shDate').value;
   var start=document.getElementById('shStart').value; var end=document.getElementById('shEnd').value;
-  if(!coach){alert('Please select a coach.');return;}
+  if(!pgId){alert('Please select a playgroup.');return;}
   if(!day){alert('Please select a day/time slot.');return;}
   if(!start||!end){alert('Please enter start and end time.');return;}
   if(!date){alert('Date is required for payroll tracking.');return;}
-  DB.shifts.push({id:uid(),coach:null,playgroup:pgId,day:day,date:date,startTime:start,endTime:end,createdBy:coach});
+  DB.shifts.push({id:uid(),coach:null,playgroup:pgId,day:day,date:date,startTime:start,endTime:end});
   saveShifts();
   document.getElementById('shiftList').innerHTML=renderShiftList('all');
   document.querySelectorAll('.shift-slot-btn').forEach(function(b){b.classList.remove('selected');});
   document.getElementById('shDay').value=''; document.getElementById('shStart').value=''; document.getElementById('shEnd').value='';
   document.getElementById('slotSelected').textContent='No slot selected'; document.getElementById('slotSelected').style.color='var(--sub)';
-  alert('Shift allocated ✅');
+  document.getElementById('shiftList').innerHTML=renderShiftList('all');
+  alert('✅ Shift released to coaches pool!');
 }
 function renderShiftList(filter){
-  var shifts=filter&&filter!=='all'?DB.shifts.filter(function(s){return s.playgroup===filter;}):DB.shifts;
+  var shifts=DB.shifts;
+  if(filter==='claimed') shifts=DB.shifts.filter(function(s){return !!s.coach;});
+  else if(filter==='unclaimed') shifts=DB.shifts.filter(function(s){return !s.coach;});
+  else if(filter&&filter!=='all') shifts=DB.shifts.filter(function(s){return s.playgroup===filter;});
   if(!shifts.length) return '<div style="color:var(--sub);font-size:.85rem">No shifts yet.</div>';
   shifts=shifts.slice().sort(function(a,b){if(a.date&&b.date)return b.date.localeCompare(a.date);return 0;});
   var html='<div class="table-wrap"><table><tr><th>Coach</th><th>Playgroup</th><th>Day</th><th>Time</th><th>Date</th><th></th></tr>';
