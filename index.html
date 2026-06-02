@@ -1198,33 +1198,75 @@ function exportPayrollCSV(){
 function dlCSV(content,filename){ var a=document.createElement('a'); a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(content); a.download=filename; a.click(); }
 
 // ─── PAYROLL ──────────────────────────────────────────────────────────────────
+// ─── PAYROLL PERIOD HELPERS (26th to 25th cycle) ─────────────────────────────
+// selMonth is stored as YYYY-MM where MM is the month the period ENDS
+// Period: 26th of previous month → 25th of selMonth
+function payrollPeriodStart(yr, mo) {
+  // 26th of the month BEFORE mo
+  var prevMo = mo === 1 ? 12 : mo - 1;
+  var prevYr = mo === 1 ? yr - 1 : yr;
+  return new Date(prevYr, prevMo - 1, 26);
+}
+function payrollPeriodEnd(yr, mo) {
+  // 25th of mo
+  return new Date(yr, mo - 1, 25);
+}
+function inPayrollPeriod(dateStr, yr, mo) {
+  if(!dateStr) return false;
+  var d = new Date(dateStr + 'T12:00:00');
+  var start = payrollPeriodStart(yr, mo);
+  var end   = payrollPeriodEnd(yr, mo);
+  return d >= start && d <= end;
+}
+function payrollPeriodLabel(yr, mo) {
+  var start = payrollPeriodStart(yr, mo);
+  var end   = payrollPeriodEnd(yr, mo);
+  var fmt = {day:'numeric',month:'long',year:'numeric'};
+  return start.toLocaleDateString('en-ZA', fmt) + ' — ' + end.toLocaleDateString('en-ZA', fmt);
+}
+// Default payroll period: if today is 26th or later, current month end; otherwise previous month end
+function defaultPayrollMonth() {
+  var now = new Date();
+  var d = now.getDate();
+  if(d >= 26) {
+    // Period ending next month's 25th
+    var nextMo = now.getMonth() + 2; // getMonth is 0-indexed, +1 for 1-indexed, +1 for next
+    var nextYr = now.getFullYear();
+    if(nextMo > 12) { nextMo = 1; nextYr++; }
+    return nextYr + '-' + String(nextMo).padStart(2,'0');
+  } else {
+    return now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+  }
+}
+
 function renderPayroll(){
   var mc=document.getElementById('mainContent'); var now=new Date();
-  var selMonth=DB.payrollMonth||(now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0'));
+  var selMonth=DB.payrollMonth||defaultPayrollMonth();
   var yr=parseInt(selMonth.split('-')[0]); var mo=parseInt(selMonth.split('-')[1]);
-  var monthName=new Date(yr,mo-1,1).toLocaleString('en-ZA',{month:'long',year:'numeric'});
+  var periodLabel = payrollPeriodLabel(yr, mo);
   var grandTotal=0;
   var rows=Object.keys(USERS).filter(function(k){return USERS[k].role==='coach';}).map(function(ck){
     var u=USERS[ck]; var rate=COACH_RATES[ck]||100;
     var shifts=DB.shifts.filter(function(s){
       if(s.coach!==ck||!s.date) return false;
-      var p=s.date.split('-'); return parseInt(p[0])===yr&&parseInt(p[1])===mo;
+      return inPayrollPeriod(s.date, yr, mo);
     });
     var ps=(DB.personalSessions||[]).filter(function(s){
       if(s.coach!==ck||!s.date) return false;
-      var p=s.date.split('-'); return parseInt(p[0])===yr&&parseInt(p[1])===mo;
+      return inPayrollPeriod(s.date, yr, mo);
     });
     var total=shifts.length+ps.length; var pay=total*rate; grandTotal+=pay;
     return {ck:ck,u:u,rate:rate,shifts:shifts,ps:ps,total:total,pay:pay};
   });
   var html='<div class="card"><div class="card-title">💰 Monthly Payroll</div>'
-    +'<div style="background:#eff6ff;border:1.5px solid #2563eb;border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:.83rem;color:#1e40af">ℹ️ Only shifts with a confirmed date are counted.</div>'
+    +'<div style="background:#eff6ff;border:1.5px solid #2563eb;border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:.83rem;color:#1e40af">'
+    +'📅 Pay period: <strong>'+periodLabel+'</strong> (26th–25th cycle)</div>'
     +'<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">'
-    +'<div class="form-row" style="margin:0;flex:1;min-width:180px"><label class="form-label">Select Month</label>'
+    +'<div class="form-row" style="margin:0;flex:1;min-width:180px"><label class="form-label">Select Pay Period (ending month)</label>'
     +'<input type="month" class="form-input" value="'+selMonth+'" onchange="setPayrollMonth(this.value)"></div>'
     +'<div style="text-align:right"><div style="font-size:.78rem;color:var(--sub)">Total payout</div>'
     +'<div style="font-size:1.8rem;font-weight:900;color:var(--green)">R'+grandTotal.toLocaleString()+'</div>'
-    +'<div style="font-size:.75rem;color:var(--sub)">'+monthName+'</div></div></div>';
+    +'<div style="font-size:.75rem;color:var(--sub)">'+periodLabel+'</div></div></div>';
   rows.forEach(function(r){
     html+='<div style="border:1.5px solid var(--border);border-radius:12px;padding:14px;margin-bottom:12px">'
       +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">'
@@ -1264,8 +1306,8 @@ function renderExpenses(){
   var payrollTotal=0;
   Object.keys(USERS).filter(function(k){return USERS[k].role==='coach';}).forEach(function(ck){
     var rate=COACH_RATES[ck]||100;
-    var sh=DB.shifts.filter(function(s){if(s.coach!==ck||!s.date)return false;var p=s.date.split('-');return parseInt(p[0])===yr&&parseInt(p[1])===mo;}).length;
-    var ps=(DB.personalSessions||[]).filter(function(s){if(s.coach!==ck||!s.date)return false;var p=s.date.split('-');return parseInt(p[0])===yr&&parseInt(p[1])===mo;}).length;
+    var sh=DB.shifts.filter(function(s){if(s.coach!==ck||!s.date)return false;return inPayrollPeriod(s.date,yr,mo);}).length;
+    var ps=(DB.personalSessions||[]).filter(function(s){if(s.coach!==ck||!s.date)return false;return inPayrollPeriod(s.date,yr,mo);}).length;
     payrollTotal+=(sh+ps)*rate;
   });
   var grand=fixedTotal+payrollTotal;
