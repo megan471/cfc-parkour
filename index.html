@@ -1304,7 +1304,7 @@ function renderScheduleAdmin(){
     +'<div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:.83rem;color:#15803d;">'
     +'✅ Use this for extra or special sessions outside the normal timetable. Once released, any coach can claim it.</div>'
     +'<div class="form-row"><label class="form-label">1. Playgroup</label>'
-    +'<select class="form-select" id="shPG" onchange="updateSlots()"><option value="">-- Choose playgroup --</option>'+pgOpts+'</select></div>'
+    +'<select class="form-select" id="shPG" ><option value="">-- Choose playgroup --</option>'+pgOpts+'</select></div>'
     +'<div class="form-row"><label class="form-label">2. Day</label>'
     +'<select class="form-select" id="shDay">'
     +'<option value="">-- Select day --</option>'
@@ -1325,13 +1325,18 @@ function renderScheduleAdmin(){
     +'<span>📋 All Upcoming Sessions</span>'
     +'<span style="font-size:.78rem;color:var(--sub);font-weight:400;">Auto-generated from timetable + special shifts</span>'
     +'</div>'
-    +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">'
-    +'<button class="btn btn-sm" style="background:#f1f5f9" onclick="filterAdminSessions("all")">All</button>'
-    +'<button class="btn btn-sm" style="background:#dcfce7;color:#16a34a" onclick="filterAdminSessions("claimed")">✓ Claimed</button>'
-    +'<button class="btn btn-sm" style="background:#fef3c7;color:#d97706" onclick="filterAdminSessions("unclaimed")">⏳ Unclaimed</button>'
-    +PLAYGROUPS.map(function(p){return '<button class="btn btn-sm" style="background:'+p.color+'22;color:'+p.color+'" onclick="filterAdminSessions("'+p.id+'")">'+p.emoji+' '+p.label+'</button>';}).join('')
+    +'<div id="adminFilterBar" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">'
+    +'<button class="btn btn-sm" data-asf="all" style="background:#f1f5f9;">All</button>'
+    +'<button class="btn btn-sm" data-asf="claimed" style="background:#dcfce7;color:#16a34a;">✓ Claimed</button>'
+    +'<button class="btn btn-sm" data-asf="unclaimed" style="background:#fef3c7;color:#d97706;">⏳ Unclaimed</button>'
+    +PLAYGROUPS.map(function(p){return '<button class="btn btn-sm" data-asf="'+p.id+'" style="background:'+p.color+'22;color:'+p.color+';">'+p.emoji+' '+p.label+'</button>';}).join('')
     +'</div>'
-    +'<div id="adminSessionList">'+buildAdminSessionList("all")+'</div></div>';
+    +'<div id="adminSessionList">'+buildAdminSessionList('all')+'</div></div>';
+  setTimeout(function(){
+    document.querySelectorAll('#adminFilterBar [data-asf]').forEach(function(btn){
+      btn.addEventListener('click',function(){filterAdminSessions(this.getAttribute('data-asf'));});
+    });
+  },50);
 }
 
 function buildAdminSessionList(filter){
