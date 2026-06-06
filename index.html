@@ -221,8 +221,8 @@ var PLAYGROUPS = [
   {id:'aisj',    label:'AISJ',            color:'#2563eb',emoji:'🏫',classifierLabel:'Grade'},
   {id:'gymnat',  label:'Gymnat',          color:'#059669',emoji:'🤸',classifierLabel:'Age'},
   {id:'personal',label:'Personal Classes',color:'#7c3aed',emoji:'🧍',classifierLabel:'Age',isPersonal:true},
-  {id:'ninjas',  label:"Ninja's",         color:'#dc2626',emoji:'🥷',classifierLabel:'Age'},
-  {id:'lninjas', label:"Little Ninja's",  color:'#f59e0b',emoji:'🌟',classifierLabel:'Age'},
+  {id:'ninjas',  label:'Ninjas',           color:'#dc2626',emoji:'🥷',classifierLabel:'Age'},
+  {id:'lninjas', label:'Little Ninjas',   color:'#f59e0b',emoji:'🌟',classifierLabel:'Age'},
   {id:'apex',    label:'Apex',            color:'#0891b2',emoji:'⚡',classifierLabel:'Age'}
 ];
 var ANY_DAY_GROUPS = ['ninjas','lninjas','apex'];
@@ -419,9 +419,9 @@ function saveStudentFlags() {
   fbSet('cfcParkour/studentFlags', flags);
 }
 
-// Firebase doesn't allow dots/slashes in keys
+// Firebase does not allow dots/slashes in keys
 function safeKey(k) { return k.replace(/\./g,'_').replace(/\//g,'_').replace(/#/g,'_').replace(/\$/g,'_').replace(/\[/g,'_').replace(/\]/g,'_'); }
-function unSafeKey(k) { return k; } // keys don't need reversing — we store original in value
+function unSafeKey(k) { return k; } // keys do not need reversing — we store original in value
 
 // ─── LOAD FROM FIREBASE ───────────────────────────────────────────────────────
 function loadFromFirebase(cb) {
@@ -440,7 +440,7 @@ function loadFromFirebase(cb) {
     if(data.extraStudents) {
       Object.values(data.extraStudents).forEach(function(s){ DB.students.push(s); });
     }
-    // Restore attendance — keys were safeKey'd
+    // Restore attendance — keys were safeKeyed
     DB.attendance = {};
     if(data.attendance) {
       Object.keys(data.attendance).forEach(function(k){
@@ -465,6 +465,7 @@ function loadFromFirebase(cb) {
     DB.expenses = data.expenses || {};
     DB.payrollMonth = data.payrollMonth || '';
     DB.expenseMonth = data.expenseMonth || '';
+    loadZohoConfig(data);
     _fbLoaded = true;
     cb();
   }, function(err) {
@@ -639,9 +640,9 @@ function buildPGBar(){
 }
 function buildNavTabs(){
   var tabs=currentUser.role==='admin'
-    ?[{id:'overview',label:'📊 Overview'},{id:'attendance',label:'✅ Attendance'},{id:'schedule',label:'📅 Schedule'},
+    ?[{id:'overview',label:'📊 Overview'},{id:'attendance',label:'✅ Attendance'},{id:'schedule',label:'📅 Special Shifts'},
       {id:'students',label:'👥 Students'},{id:'corrections',label:'✏️ Corrections'},{id:'reports',label:'📋 Reports'},
-      {id:'payroll',label:'💰 Payroll'},{id:'expenses',label:'🏦 Expenses'},{id:'pinmanage',label:'🔐 PINs'}]
+      {id:'payroll',label:'💰 Payroll'},{id:'expenses',label:'🏦 Expenses'},{id:'invoicing',label:'🧾 Invoicing'},{id:'pinmanage',label:'🔐 PINs'}]
     :[{id:'coachPortal',label:'🏃 Coach Portal'},{id:'markAttendance',label:'✅ Mark Attendance'},{id:'myStats',label:'📈 My Stats'}];
   var nt=document.getElementById('navTabs'); nt.innerHTML='';
   if(!currentTab||!tabs.filter(function(t){return t.id===currentTab;}).length) currentTab=tabs[0].id;
@@ -670,6 +671,10 @@ function renderTab(id){
   else if(id==='reports') renderReports();
   else if(id==='payroll') renderPayroll();
   else if(id==='expenses') renderExpenses();
+  else if(id==='schedule') renderScheduleAdmin();
+  else if(id==='invoicing') renderInvoicing();
+  else if(id==='schedule') renderScheduleAdmin();
+  else if(id==='invoicing') renderInvoicing();
   else if(id==='pinmanage') renderPINManage();
   else if(id==='coachPortal') renderCoachPortal();
   else if(id==='markAttendance') renderMarkAttendance();
@@ -852,7 +857,418 @@ function renderCorrLog(){
   return html+'</table></div>';
 }
 
+
+// ─── INVOICING (ZOHO BOOKS) ────────────────────────────────────────────────────
+function renderInvoicing(){
+  var mc=document.getElementById('mainContent');
+  var zohoConnected = DB.zohoToken && DB.zohoToken.access_token;
+
+  if(!zohoConnected){
+    mc.innerHTML='<div class="card"><div class="card-title">🧾 Zoho Books — Connect Your Account</div>'
+      +'<div style="background:#fffbeb;border:1.5px solid #f59e0b;border-radius:10px;padding:16px;margin-bottom:16px;">'
+      +'<div style="font-weight:700;margin-bottom:8px;">📋 How to connect Zoho Books</div>'
+      +'<div style="font-size:.88rem;line-height:1.7;color:#92400e;">'
+      +'<b>Step 1:</b> Go to <a href="https://api-console.zoho.com" target="_blank" style="color:#2563eb;">api-console.zoho.com</a><br/>'
+      +'<b>Step 2:</b> Click <b>Add Client</b> → choose <b>Server-based Applications</b><br/>'
+      +'<b>Step 3:</b> Set Redirect URI to: <code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;">https://megan471.github.io/cfc-parkour/</code><br/>'
+      +'<b>Step 4:</b> Copy your <b>Client ID</b> and <b>Client Secret</b><br/>'
+      +'<b>Step 5:</b> Paste them below and click Connect'
+      +'</div></div>'
+      +'<div class="form-row"><label class="form-label">Zoho Organisation ID</label>'
+      +'<input class="form-input" id="zohoOrgId" placeholder="e.g. 20098765432" value="'+(DB.zohoOrgId||'')+'"></div>'
+      +'<div class="form-row"><label class="form-label">Zoho Client ID</label>'
+      +'<input class="form-input" id="zohoClientId" placeholder="Paste your Client ID" value="'+(DB.zohoClientId||'')+'"></div>'
+      +'<div class="form-row"><label class="form-label">Zoho Client Secret</label>'
+      +'<input class="form-input" id="zohoClientSecret" placeholder="Paste your Client Secret" value="'+(DB.zohoClientSecret||'')+'"></div>'
+      +'<button class="btn btn-primary" style="width:100%;margin-bottom:10px;" onclick="saveZohoCredentials()">💾 Save Credentials</button>'
+      +'<div style="background:#eff6ff;border:1.5px solid #2563eb;border-radius:10px;padding:14px;">'
+      +'<div style="font-weight:700;margin-bottom:6px;">🔐 Authorise with Zoho</div>'
+      +'<div style="font-size:.85rem;color:#1e40af;margin-bottom:10px;">Once you have saved your credentials, click below to open the Zoho login page. After you approve access, you will be redirected back here.</div>'
+      +'<button class="btn btn-primary" style="width:100%;" onclick="openZohoAuth()">🔗 Connect to Zoho Books</button>'
+      +'</div></div>'
+      +'<div class="card"><div class="card-title" style="color:#94a3b8;">💡 What you will see once connected</div>'
+      +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:4px;">'
+      +'<div style="padding:12px;background:#f1f5f9;border-radius:8px;"><div style="font-weight:700;font-size:.88rem;">💚 Paid</div><div style="font-size:.8rem;color:var(--sub);margin-top:3px;">Invoices marked as paid in Zoho</div></div>'
+      +'<div style="padding:12px;background:#f1f5f9;border-radius:8px;"><div style="font-weight:700;font-size:.88rem;">🔴 Overdue</div><div style="font-size:.8rem;color:var(--sub);margin-top:3px;">Invoices past due date, unpaid</div></div>'
+      +'<div style="padding:12px;background:#f1f5f9;border-radius:8px;"><div style="font-weight:700;font-size:.88rem;">🟡 Sent</div><div style="font-size:.8rem;color:var(--sub);margin-top:3px;">Invoices sent, awaiting payment</div></div>'
+      +'<div style="padding:12px;background:#f1f5f9;border-radius:8px;"><div style="font-weight:700;font-size:.88rem;">⚪ Draft</div><div style="font-size:.8rem;color:var(--sub);margin-top:3px;">Invoices not yet sent to client</div></div>'
+      +'</div></div>';
+    return;
+  }
+
+  // Connected — show invoice dashboard
+  mc.innerHTML='<div class="card"><div style="display:flex;align-items:center;justify-content:space-between;">'
+    +'<div class="card-title" style="margin-bottom:0;">🧾 Zoho Books — Invoices</div>'
+    +'<div style="display:flex;gap:8px;">'
+    +'<button class="btn btn-primary btn-sm" onclick="fetchZohoInvoices()">🔄 Refresh</button>'
+    +'<button class="btn btn-danger btn-sm" onclick="disconnectZoho()">Disconnect</button>'
+    +'</div></div></div>'
+    +'<div id="zohoInvoiceContent"><div style="text-align:center;padding:32px;color:var(--sub);">Loading invoices... <button class="btn btn-primary" style="margin-left:12px;" onclick="fetchZohoInvoices()">Load Now</button></div></div>';
+  fetchZohoInvoices();
+}
+
+function saveZohoCredentials(){
+  var orgId=document.getElementById('zohoOrgId').value.trim();
+  var clientId=document.getElementById('zohoClientId').value.trim();
+  var clientSecret=document.getElementById('zohoClientSecret').value.trim();
+  if(!orgId||!clientId||!clientSecret){alert('Please fill in all three fields.');return;}
+  DB.zohoOrgId=orgId;
+  DB.zohoClientId=clientId;
+  DB.zohoClientSecret=clientSecret;
+  fbSet('cfcParkour/zohoOrgId',orgId);
+  fbSet('cfcParkour/zohoClientId',clientId);
+  fbSet('cfcParkour/zohoClientSecret',clientSecret);
+  alert('✅ Credentials saved! Now click Connect to Zoho Books.');
+}
+
+function openZohoAuth(){
+  var clientId=DB.zohoClientId;
+  if(!clientId){alert('Save your credentials first.');return;}
+  var redirect=encodeURIComponent('https://megan471.github.io/cfc-parkour/');
+  var scope=encodeURIComponent('ZohoBooks.invoices.READ ZohoBooks.contacts.READ');
+  var url='https://accounts.zoho.com/oauth/v2/auth?scope='+scope+'&client_id='+clientId+'&response_type=code&redirect_uri='+redirect+'&access_type=offline';
+  window.open(url,'_blank');
+  alert('After approving access in Zoho, copy the "code" from the redirect URL and paste it here.');
+  var code=prompt('Paste the authorisation code from the redirect URL:');
+  if(code) exchangeZohoCode(code);
+}
+
+function exchangeZohoCode(code){
+  // NOTE: Token exchange requires a server-side call (CORS restriction)
+  // Store the code and show manual instructions
+  DB.zohoAuthCode=code;
+  fbSet('cfcParkour/zohoAuthCode',code);
+  mc_show_zoho_instructions(code);
+}
+
+function mc_show_zoho_instructions(code){
+  var mc=document.getElementById('mainContent');
+  var redirect='https://megan471.github.io/cfc-parkour/';
+  mc.innerHTML+='<div class="card" style="background:#fffbeb;border:1.5px solid #f59e0b;">'
+    +'<div class="card-title">⚠️ One More Step — Token Exchange</div>'
+    +'<div style="font-size:.85rem;line-height:1.7;color:#92400e;">'
+    +'Due to browser security, you need to run this command once in your terminal (or ask your developer):<br/><br/>'
+    +'<code style="display:block;background:#1e293b;color:#86efac;padding:12px;border-radius:8px;font-size:.78rem;word-break:break-all;">'
+    +'curl -X POST https://accounts.zoho.com/oauth/v2/token \\ <br/>'
+    +'-d "code='+code+'" \\ <br/>'
+    +'-d "client_id='+DB.zohoClientId+'" \\ <br/>'
+    +'-d "client_secret='+DB.zohoClientSecret+'" \\ <br/>'
+    +'-d "redirect_uri='+redirect+'" \\ <br/>'
+    +'-d "grant_type=authorization_code"'
+    +'</code><br/>'
+    +'Copy the <b>access_token</b> and <b>refresh_token</b> from the response and paste below:'
+    +'</div>'
+    +'<div class="form-row" style="margin-top:12px;"><label class="form-label">Access Token</label>'
+    +'<input class="form-input" id="zohoAccessToken" placeholder="Paste access_token here"></div>'
+    +'<div class="form-row"><label class="form-label">Refresh Token</label>'
+    +'<input class="form-input" id="zohoRefreshToken" placeholder="Paste refresh_token here"></div>'
+    +'<button class="btn btn-primary" style="width:100%" onclick="saveZohoTokens()">✅ Save & Connect</button>'
+    +'</div>';
+}
+
+function saveZohoTokens(){
+  var access=document.getElementById('zohoAccessToken').value.trim();
+  var refresh=document.getElementById('zohoRefreshToken').value.trim();
+  if(!access||!refresh){alert('Please paste both tokens.');return;}
+  DB.zohoToken={access_token:access,refresh_token:refresh};
+  fbSet('cfcParkour/zohoToken',DB.zohoToken);
+  alert('✅ Connected to Zoho Books!');
+  renderInvoicing();
+}
+
+function disconnectZoho(){
+  if(!confirm('Disconnect Zoho Books?')) return;
+  DB.zohoToken=null;
+  fbSet('cfcParkour/zohoToken',null);
+  renderInvoicing();
+}
+
+function fetchZohoInvoices(){
+  var el=document.getElementById('zohoInvoiceContent');
+  if(!el) return;
+  if(!DB.zohoToken||!DB.zohoOrgId){el.innerHTML='<div style="color:var(--red);">Not connected.</div>';return;}
+  el.innerHTML='<div style="text-align:center;padding:24px;color:var(--sub);">⏳ Fetching invoices from Zoho Books...</div>';
+
+  fetch('https://www.zohoapis.com/books/v3/invoices?organization_id='+DB.zohoOrgId+'&per_page=200',{
+    headers:{'Authorization':'Zoho-oauthtoken '+DB.zohoToken.access_token}
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(data){
+    if(data.code===57 || data.code===401){
+      el.innerHTML='<div style="color:var(--red);padding:16px;">Token expired. Please reconnect Zoho Books.</div>'
+        +'<button class="btn btn-primary" onclick="disconnectZoho()">Reconnect</button>';
+      return;
+    }
+    var invoices=data.invoices||[];
+    renderZohoInvoices(invoices, el);
+  })
+  .catch(function(e){
+    el.innerHTML='<div style="color:var(--red);padding:16px;">❌ Error fetching invoices: '+e.message+'<br/><br/>'
+      +'<b>If you see a CORS error</b> — Zoho API requires requests from a server, not directly from the browser. '
+      +'Consider using a proxy or the Zoho Books mobile app for now.</div>';
+  });
+}
+
+function renderZohoInvoices(invoices, el){
+  var paid=invoices.filter(function(i){return i.status==='paid';});
+  var overdue=invoices.filter(function(i){return i.status==='overdue';});
+  var sent=invoices.filter(function(i){return i.status==='sent';});
+  var draft=invoices.filter(function(i){return i.status==='draft';});
+
+  var html='<div class="stat-grid" style="margin-bottom:14px;">'
+    +'<div class="stat-box green"><div class="stat-num">'+paid.length+'</div><div class="stat-label">Paid</div></div>'
+    +'<div class="stat-box red"><div class="stat-num">'+overdue.length+'</div><div class="stat-label">Overdue</div></div>'
+    +'<div class="stat-box gold"><div class="stat-num">'+sent.length+'</div><div class="stat-label">Sent / Awaiting</div></div>'
+    +'<div class="stat-box"><div class="stat-num" style="color:#94a3b8;">'+draft.length+'</div><div class="stat-label">Draft</div></div>'
+    +'</div>';
+
+  var groups=[
+    {label:'🔴 Overdue — Action Required',list:overdue,color:'#dc2626',bg:'#fee2e2'},
+    {label:'🟡 Sent — Awaiting Payment',list:sent,color:'#d97706',bg:'#fef3c7'},
+    {label:'⚪ Draft — Not Yet Sent',list:draft,color:'#64748b',bg:'#f1f5f9'},
+    {label:'💚 Paid',list:paid,color:'#16a34a',bg:'#dcfce7'},
+  ];
+
+  groups.forEach(function(g){
+    if(!g.list.length) return;
+    html+='<div style="margin-bottom:14px;">'
+      +'<div style="font-weight:700;font-size:.88rem;margin-bottom:8px;padding:8px 12px;background:'+g.bg+';border-radius:8px;color:'+g.color+';">'+g.label+' ('+g.list.length+')</div>'
+      +'<div class="table-wrap"><table><tr><th>Invoice #</th><th>Customer</th><th>Date</th><th>Due</th><th>Amount</th><th>Status</th></tr>';
+    g.list.forEach(function(inv){
+      var statusCol=inv.status==='paid'?'#16a34a':inv.status==='overdue'?'#dc2626':inv.status==='sent'?'#d97706':'#64748b';
+      html+='<tr>'
+        +'<td style="font-family:monospace;font-size:.82rem;">'+inv.invoice_number+'</td>'
+        +'<td><strong>'+h(inv.customer_name)+'</strong></td>'
+        +'<td>'+inv.date+'</td>'
+        +'<td>'+inv.due_date+'</td>'
+        +'<td style="font-weight:700;">R '+parseFloat(inv.total).toLocaleString('en-ZA',{minimumFractionDigits:2})+'</td>'
+        +'<td><span style="background:'+statusCol+'22;color:'+statusCol+';padding:2px 8px;border-radius:20px;font-weight:700;font-size:.75rem;">'+inv.status+'</span></td>'
+        +'</tr>';
+    });
+    html+='</table></div></div>';
+  });
+
+  el.innerHTML=html;
+}
+
+// Load zoho config from Firebase on startup
+function loadZohoConfig(data){
+  if(data.zohoToken) DB.zohoToken=data.zohoToken;
+  if(data.zohoOrgId) DB.zohoOrgId=data.zohoOrgId;
+  if(data.zohoClientId) DB.zohoClientId=data.zohoClientId;
+  if(data.zohoClientSecret) DB.zohoClientSecret=data.zohoClientSecret;
+}
+
+
 // ─── PIN MANAGEMENT ───────────────────────────────────────────────────────────
+// ─── ZOHO BOOKS INVOICING ────────────────────────────────────────────────────
+function renderInvoicing(){
+  var mc=document.getElementById('mainContent');
+  var cfg=DB.zohoCfg||{};
+  var hasToken=!!(cfg.accessToken);
+
+  // ── SETUP GUIDE (shown when not connected) ──────────────────────────────
+  if(!hasToken){
+    mc.innerHTML='<div class="card"><div class="card-title">🧾 Zoho Books — Invoicing</div>'
+      +'<div style="background:#fef3c7;border:1.5px solid #f59e0b;border-radius:10px;padding:14px 16px;margin-bottom:16px;">'
+      +'<div style="font-weight:700;color:#92400e;margin-bottom:6px;">⚙️ Setup Required — Follow these steps once</div>'
+      +'<ol style="color:#78350f;font-size:.85rem;line-height:2;padding-left:18px;">'
+      +'<li>Go to <strong>api-console.zoho.com</strong> and sign in with your Zoho account</li>'
+      +'<li>Click <strong>GET STARTED</strong> → choose <strong>Server-based Applications</strong></li>'
+      +'<li>Set the redirect URI to: <code style="background:#fff8e1;padding:1px 5px;border-radius:4px;">https://megan471.github.io/cfc-parkour/</code></li>'
+      +'<li>Copy your <strong>Client ID</strong> and <strong>Client Secret</strong> and paste them below</li>'
+      +'<li>Click <strong>Generate Auth URL</strong> → open the link → approve access</li>'
+      +'<li>You will be redirected back here — copy the <strong>code=</strong> value from the URL</li>'
+      +'<li>Paste the code below and click <strong>Exchange for Token</strong></li>'
+      +'</ol></div>'
+      +'<div class="form-row"><label class="form-label">Zoho Organisation ID <span style="color:var(--sub);font-size:.78rem">(Settings → Organisation in Zoho Books)</span></label>'
+      +'<input type="text" class="form-input" id="zOrgId" value="'+(cfg.orgId||'')+'" placeholder="e.g. 12345678"></div>'
+      +'<div class="form-row"><label class="form-label">Client ID</label>'
+      +'<input type="text" class="form-input" id="zClientId" value="'+(cfg.clientId||'')+'" placeholder="1000.XXXXXXXX"></div>'
+      +'<div class="form-row"><label class="form-label">Client Secret</label>'
+      +'<input type="password" class="form-input" id="zClientSecret" value="'+(cfg.clientSecret||'')+'" placeholder="Your client secret"></div>'
+      +'<button class="btn btn-primary" onclick="saveZohoCredentials()" style="margin-bottom:10px;width:100%">💾 Save Credentials</button>'
+      +'<div id="zohoAuthUrlRow" style="display:none;margin-top:8px;">'
+      +'<label class="form-label">Step 2 — Open this URL to authorise access</label>'
+      +'<div id="zohoAuthUrl" style="background:#f1f5f9;border-radius:8px;padding:10px;font-size:.78rem;word-break:break-all;margin-bottom:8px;"></div>'
+      +'<a id="zohoAuthLink" href="#" target="_blank" class="btn btn-primary" style="display:inline-block;margin-bottom:14px;">🔗 Open Authorisation URL</a></div>'
+      +'<div class="form-row" style="margin-top:4px;"><label class="form-label">Step 3 — Paste the auth code from the redirect URL</label>'
+      +'<input type="text" class="form-input" id="zAuthCode" placeholder="Paste code=XXXXXXX value here"></div>'
+      +'<button class="btn" style="background:#059669;color:#fff;width:100%;margin-top:4px;" onclick="exchangeZohoToken()">🔄 Exchange for Access Token</button>'
+      +'<div id="zohoStatus" style="margin-top:10px;font-size:.83rem;"></div>'
+      +'</div>';
+    // Show auth URL if credentials already saved
+    if(cfg.clientId&&cfg.orgId){
+      setTimeout(function(){
+        var el=document.getElementById('zohoAuthUrlRow');
+        if(el){ el.style.display='block'; buildZohoAuthUrl(); }
+      },100);
+    }
+    return;
+  }
+
+  // ── INVOICE DASHBOARD (connected) ──────────────────────────────────────
+  mc.innerHTML='<div class="card"><div class="card-title">🧾 Zoho Books — Invoices'
+    +'<button onclick="disconnectZoho()" style="float:right;background:#fee2e2;color:#dc2626;border:none;padding:4px 10px;border-radius:6px;font-size:.75rem;cursor:pointer;font-weight:600;">Disconnect</button>'
+    +'<button onclick="loadZohoInvoices()" style="float:right;margin-right:8px;background:#eff6ff;color:#2563eb;border:none;padding:4px 10px;border-radius:6px;font-size:.75rem;cursor:pointer;font-weight:600;">🔄 Refresh</button>'
+    +'</div>'
+    +'<div id="invoiceDash"><div style="text-align:center;padding:30px;color:var(--sub);">Loading invoices...</div></div>'
+    +'</div>';
+  loadZohoInvoices();
+}
+
+function saveZohoCredentials(){
+  var orgId=document.getElementById('zOrgId').value.trim();
+  var clientId=document.getElementById('zClientId').value.trim();
+  var clientSecret=document.getElementById('zClientSecret').value.trim();
+  if(!orgId||!clientId||!clientSecret){alert('Please fill in all three fields.');return;}
+  DB.zohoCfg=Object.assign(DB.zohoCfg||{},{orgId:orgId,clientId:clientId,clientSecret:clientSecret});
+  saveDB();
+  document.getElementById('zohoAuthUrlRow').style.display='block';
+  buildZohoAuthUrl();
+  document.getElementById('zohoStatus').innerHTML='<span style="color:#16a34a;font-weight:600;">✅ Credentials saved. Now open the authorisation URL above.</span>';
+}
+
+function buildZohoAuthUrl(){
+  var cfg=DB.zohoCfg||{};
+  var redirect=encodeURIComponent('https://megan471.github.io/cfc-parkour/');
+  var url='https://accounts.zoho.com/oauth/v2/auth?scope=ZohoBooks.invoices.READ,ZohoBooks.contacts.READ'
+    +'&client_id='+encodeURIComponent(cfg.clientId||'')
+    +'&response_type=code&access_type=offline'
+    +'&redirect_uri='+redirect;
+  var el=document.getElementById('zohoAuthUrl');
+  var lnk=document.getElementById('zohoAuthLink');
+  if(el) el.textContent=url;
+  if(lnk){ lnk.href=url; }
+}
+
+function exchangeZohoToken(){
+  var code=(document.getElementById('zAuthCode').value||'').trim().replace(/^code=/,'');
+  var cfg=DB.zohoCfg||{};
+  if(!code){alert('Paste the auth code first.');return;}
+  var statusEl=document.getElementById('zohoStatus');
+  statusEl.innerHTML='<span style="color:#2563eb;">⏳ Exchanging token... (this needs a backend call due to CORS — see instructions)</span>';
+  // Zoho token exchange cannot be done from browser due to CORS
+  // Show manual curl command instead
+  var redirect='https://megan471.github.io/cfc-parkour/';
+  var curlCmd='curl -X POST https://accounts.zoho.com/oauth/v2/token \
+'
+    +' -d "code='+code+'&client_id='+cfg.clientId+'&client_secret='+cfg.clientSecret
+    +'&redirect_uri='+redirect+'&grant_type=authorization_code"';
+  statusEl.innerHTML='<div style="background:#0f172a;color:#86efac;border-radius:8px;padding:12px;font-family:monospace;font-size:.75rem;white-space:pre-wrap;margin-bottom:10px;">'+curlCmd+'</div>'
+    +'<div style="font-size:.83rem;color:#78350f;background:#fef3c7;padding:10px;border-radius:8px;margin-bottom:10px;">'
+    +'Run the command above in Terminal. Copy the <strong>access_token</strong> and <strong>refresh_token</strong> from the response, then paste them below.</div>'
+    +'<div class="form-row"><label class="form-label">Access Token</label>'
+    +'<input type="text" class="form-input" id="zAccessToken" placeholder="Paste access_token here"></div>'
+    +'<div class="form-row"><label class="form-label">Refresh Token</label>'
+    +'<input type="text" class="form-input" id="zRefreshToken" placeholder="Paste refresh_token here"></div>'
+    +'<button class="btn" style="background:#059669;color:#fff;width:100%;" onclick="saveZohoTokens()">✅ Connect to Zoho Books</button>';
+}
+
+function saveZohoTokens(){
+  var at=(document.getElementById('zAccessToken')||{}).value||'';
+  var rt=(document.getElementById('zRefreshToken')||{}).value||'';
+  if(!at||!rt){alert('Paste both tokens.');return;}
+  DB.zohoCfg=Object.assign(DB.zohoCfg||{},{accessToken:at,refreshToken:rt});
+  saveDB();
+  alert('✅ Connected! Loading your invoices...');
+  renderInvoicing();
+}
+
+function disconnectZoho(){
+  if(!confirm('Disconnect Zoho Books?')) return;
+  DB.zohoCfg={};
+  saveDB();
+  renderInvoicing();
+}
+
+function loadZohoInvoices(){
+  var cfg=DB.zohoCfg||{};
+  var dash=document.getElementById('invoiceDash');
+  if(!dash) return;
+  // Fetch invoices from Zoho Books API
+  fetch('https://www.zohoapis.com/books/v3/invoices?organization_id='+cfg.orgId+'&status=all&per_page=100',{
+    headers:{'Authorization':'Zoho-oauthtoken '+cfg.accessToken}
+  })
+  .then(function(r){
+    if(r.status===401){
+      dash.innerHTML='<div style="color:#dc2626;padding:14px;">⚠️ Token expired. Please reconnect Zoho Books.</div>'
+        +'<button class="btn btn-primary" onclick="disconnectZoho()">Reconnect</button>';
+      return null;
+    }
+    return r.json();
+  })
+  .then(function(data){
+    if(!data) return;
+    if(data.code!==0){
+      dash.innerHTML='<div style="color:#dc2626;padding:14px;">Zoho API error: '+(data.message||JSON.stringify(data))+'</div>';
+      return;
+    }
+    renderInvoiceDash(data.invoices||[]);
+  })
+  .catch(function(e){
+    if(dash) dash.innerHTML='<div style="color:#dc2626;padding:14px;">⚠️ Could not reach Zoho API. Check your token and connection.<br><small>'+e.message+'</small></div>';
+  });
+}
+
+function renderInvoiceDash(invoices){
+  var dash=document.getElementById('invoiceDash');
+  if(!dash) return;
+  window._zohoInvoices=invoices;
+  var paid=invoices.filter(function(i){return i.status==='paid';}).length;
+  var overdue=invoices.filter(function(i){return i.status==='overdue';}).length;
+  var sent=invoices.filter(function(i){return i.status==='sent';}).length;
+  var draft=invoices.filter(function(i){return i.status==='draft';}).length;
+  var html='<div class="stat-grid" style="margin-bottom:16px;">'
+    +'<div class="stat-box green"><div class="stat-num">'+paid+'</div><div class="stat-label">Paid</div></div>'
+    +'<div class="stat-box"><div class="stat-num" style="color:#dc2626;">'+overdue+'</div><div class="stat-label">Overdue</div></div>'
+    +'<div class="stat-box blue"><div class="stat-num">'+sent+'</div><div class="stat-label">Sent</div></div>'
+    +'<div class="stat-box gold"><div class="stat-num">'+draft+'</div><div class="stat-label">Draft</div></div>'
+    +'</div>'
+    +'<div id="invoiceFilters" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">'
+    +'<button class="btn btn-sm inv-filter" data-f="all">All ('+invoices.length+')</button>'
+    +'<button class="btn btn-sm inv-filter" data-f="paid" style="background:#dcfce7;color:#16a34a;">✅ Paid</button>'
+    +'<button class="btn btn-sm inv-filter" data-f="overdue" style="background:#fee2e2;color:#dc2626;">⚠️ Overdue</button>'
+    +'<button class="btn btn-sm inv-filter" data-f="sent" style="background:#dbeafe;color:#2563eb;">📨 Sent</button>'
+    +'<button class="btn btn-sm inv-filter" data-f="draft" style="background:#fef3c7;color:#d97706;">📝 Draft</button>'
+    +'</div>'
+    +'<div id="invoiceTable">'+buildInvoiceTable(invoices)+'</div>';
+  dash.innerHTML=html;
+  // Attach filter button listeners
+  document.querySelectorAll('.inv-filter').forEach(function(btn){
+    btn.addEventListener('click',function(){filterInvoices(this.getAttribute('data-f'));});
+  });
+}
+
+
+function buildInvoiceTable(invoices){
+  if(!invoices.length) return '<div style="color:var(--sub);padding:14px;">No invoices found.</div>';
+  var statusColors={paid:'#16a34a',overdue:'#dc2626',sent:'#2563eb',draft:'#d97706',void:'#64748b'};
+  var html='<div class="table-wrap"><table>'
+    +'<tr><th>Invoice #</th><th>Customer</th><th>Date</th><th>Due</th><th>Amount</th><th>Status</th></tr>';
+  invoices.forEach(function(inv){
+    var col=statusColors[inv.status]||'#64748b';
+    html+='<tr>'
+      +'<td style="font-weight:600;color:#2563eb;">'+inv.invoice_number+'</td>'
+      +'<td>'+inv.customer_name+'</td>'
+      +'<td>'+inv.date+'</td>'
+      +'<td style="color:'+(inv.status==='overdue'?'#dc2626':'inherit')+';">'+inv.due_date+'</td>'
+      +'<td style="font-weight:700;">'+inv.currency_symbol+(parseFloat(inv.total)||0).toFixed(2)+'</td>'
+      +'<td><span style="background:'+col+'22;color:'+col+';padding:2px 8px;border-radius:20px;font-size:.75rem;font-weight:700;text-transform:uppercase;">'+inv.status+'</span></td>'
+      +'</tr>';
+  });
+  html+='</table></div>';
+  return html;
+}
+
+function filterInvoices(status){
+  var all=window._zohoInvoices||[];
+  var filtered=status==='all'?all:all.filter(function(i){return i.status===status;});
+  var el=document.getElementById('invoiceTable');
+  if(el) el.innerHTML=buildInvoiceTable(filtered);
+}
+
+
 function renderPINManage(){
   var mc=document.getElementById('mainContent');
   var pins=DB.coachPins||{};
@@ -884,87 +1300,103 @@ function savePin(k){
 function renderScheduleAdmin(){
   var mc=document.getElementById('mainContent');
   var pgOpts=PLAYGROUPS.map(function(p){return '<option value="'+p.id+'">'+p.emoji+' '+p.label+'</option>';}).join('');
-  mc.innerHTML='<div class="card"><div class="card-title">📅 Release a Shift</div>'
-    +'<div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:.83rem;color:#15803d;">✅ Set the playgroup, day, time and date — the shift goes straight to the coaches pool for anyone to claim.</div>'
+  mc.innerHTML='<div class="card"><div class="card-title">📅 Release a Special Shift</div>'
+    +'<div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:.83rem;color:#15803d;">'
+    +'✅ Use this for extra or special sessions outside the normal timetable. Once released, any coach can claim it.</div>'
     +'<div class="form-row"><label class="form-label">1. Playgroup</label>'
     +'<select class="form-select" id="shPG" onchange="updateSlots()"><option value="">-- Choose playgroup --</option>'+pgOpts+'</select></div>'
-    +'<div class="form-row"><label class="form-label">2. Day & Time</label>'
-    +'<div id="slotGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px"><div style="grid-column:span 2;color:var(--sub);font-size:.85rem">Select a playgroup first</div></div>'
-    +'<input type="hidden" id="shDay"><input type="hidden" id="shStart"><input type="hidden" id="shEnd">'
-    +'<div id="slotSelected" style="margin-top:10px;font-size:.85rem;color:var(--sub);padding:8px 12px;background:#f8fafc;border-radius:8px;border:1.5px solid var(--border)">No slot selected</div></div>'
-    +'<div id="manualTimeRow" class="hidden form-row"><label class="form-label">Session Time</label>'
-    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'
-    +'<div><label class="form-label">Start</label><input type="time" class="form-input" id="manualStart" onchange="applyManualTime()"></div>'
-    +'<div><label class="form-label">End</label><input type="time" class="form-input" id="manualEnd" onchange="applyManualTime()"></div></div></div>'
-    +'<div class="form-row"><label class="form-label">3. Date <span style="color:var(--red);font-size:.78rem">★ Required for payroll</span></label>'
+    +'<div class="form-row"><label class="form-label">2. Day</label>'
+    +'<select class="form-select" id="shDay">'
+    +'<option value="">-- Select day --</option>'
+    +'<option value="Monday">Monday</option><option value="Tuesday">Tuesday</option>'
+    +'<option value="Wednesday">Wednesday</option><option value="Thursday">Thursday</option>'
+    +'<option value="Friday">Friday</option><option value="Saturday">Saturday</option>'
+    +'<option value="Sunday">Sunday</option>'
+    +'</select></div>'
+    +'<div class="form-row"><label class="form-label">3. Time</label>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">'
+    +'<div><label class="form-label">Start</label><input type="time" class="form-input" id="shStart"></div>'
+    +'<div><label class="form-label">End</label><input type="time" class="form-input" id="shEnd"></div>'
+    +'</div></div>'
+    +'<div class="form-row"><label class="form-label">4. Date <span style="color:var(--red);font-size:.78rem">★ Required for payroll</span></label>'
     +'<input type="date" class="form-input" id="shDate" value="'+todayDate()+'"></div>'
-    +'<button class="btn btn-primary" style="width:100%" onclick="addShift()">🚀 Release Shift to Coaches</button></div>'
-    +'<div class="card"><div class="card-title">📋 All Shifts</div>'
-    +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">'
-    +'<button class="btn btn-sm" style="background:#f1f5f9" onclick="filterShifts(\'all\')">All</button>'
-    +'<button class="btn btn-sm" style="background:#dcfce7;color:#16a34a" onclick="filterShifts(\'claimed\')">✓ Claimed</button>'
-    +'<button class="btn btn-sm" style="background:#fef3c7;color:#d97706" onclick="filterShifts(\'unclaimed\')">⏳ Unclaimed</button>'
-    +PLAYGROUPS.map(function(p){return '<button class="btn btn-sm" style="background:'+p.color+'22;color:'+p.color+'" onclick="filterShifts(\"'+p.id+'\")" >'+p.emoji+' '+p.label+'</button>';}).join('')
-    +'</div><div id="shiftList">'+renderShiftList('all')+'</div></div>';
+    +'<button class="btn btn-primary" style="width:100%" onclick="addShift()">🚀 Release to Coaches Pool</button></div>'
+    +'<div class="card"><div class="card-title" style="display:flex;align-items:center;justify-content:space-between;">'
+    +'<span>📋 All Upcoming Sessions</span>'
+    +'<span style="font-size:.78rem;color:var(--sub);font-weight:400;">Auto-generated from timetable + special shifts</span>'
+    +'</div>'
+    +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">'
+    +'<button class="btn btn-sm" style="background:#f1f5f9" onclick="filterAdminSessions("all")">All</button>'
+    +'<button class="btn btn-sm" style="background:#dcfce7;color:#16a34a" onclick="filterAdminSessions("claimed")">✓ Claimed</button>'
+    +'<button class="btn btn-sm" style="background:#fef3c7;color:#d97706" onclick="filterAdminSessions("unclaimed")">⏳ Unclaimed</button>'
+    +PLAYGROUPS.map(function(p){return '<button class="btn btn-sm" style="background:'+p.color+'22;color:'+p.color+'" onclick="filterAdminSessions("'+p.id+'")">'+p.emoji+' '+p.label+'</button>';}).join('')
+    +'</div>'
+    +'<div id="adminSessionList">'+buildAdminSessionList("all")+'</div></div>';
 }
 
-function updateSlots(){
-  var pgId=document.getElementById('shPG')?document.getElementById('shPG').value:'';
-  var grid=document.getElementById('slotGrid'); var manualRow=document.getElementById('manualTimeRow'); var sel=document.getElementById('slotSelected');
-  if(!grid) return;
-  document.getElementById('shDay').value=''; document.getElementById('shStart').value=''; document.getElementById('shEnd').value='';
-  sel.textContent='No slot selected'; sel.style.color='var(--sub)';
-  document.querySelectorAll('.shift-slot-btn').forEach(function(b){b.classList.remove('selected');});
-  manualRow.classList.add('hidden');
-  if(!pgId){grid.innerHTML='<div style="grid-column:span 2;color:var(--sub);font-size:.85rem">Select a playgroup first</div>';return;}
-  var slots=ALL_SLOTS[pgId]||[]; var isPersonal=pgId==='personal'; var pg=getPG(pgId);
-  if(isPersonal) manualRow.classList.remove('hidden');
-  grid.innerHTML=slots.map(function(s){
-    var color=pg?pg.color:'#2563eb';
-    return '<button type="button" class="shift-slot-btn" data-day="'+s.day+'" data-start="'+s.start+'" data-end="'+s.end+'" data-personal="'+(isPersonal?1:0)+'" onclick="pickSlot(this)">'
-      +'<div style="font-weight:800;color:'+color+';font-size:.88rem">'+s.day+'</div>'
-      +'<div style="font-size:.76rem;margin-top:3px;font-weight:600;color:'+(isPersonal?'var(--sub)':color)+'">'+( isPersonal?'Set manually':s.label)+'</div></button>';
-  }).join('');
+function buildAdminSessionList(filter){
+  var sessions=getUpcomingSessions();
+  if(filter==="claimed") sessions=sessions.filter(function(s){return !!getSessionClaim(s.id);});
+  else if(filter==="unclaimed") sessions=sessions.filter(function(s){return !getSessionClaim(s.id);});
+  else if(filter&&filter!=="all") sessions=sessions.filter(function(s){return s.playgroup===filter;});
+  // Also include manual special shifts not in timetable
+  var specials=(DB.shifts||[]).filter(function(s){return s.special;});
+  if(!sessions.length&&!specials.length) return '<div style="color:var(--sub);padding:14px;">No sessions found.</div>';
+  var html='<div class="table-wrap"><table><tr><th>Status</th><th>Group</th><th>Date</th><th>Day</th><th>Time</th><th></th></tr>';
+  sessions.forEach(function(s){
+    var pg=getPG(s.playgroup);
+    var cl=getSessionClaim(s.id);
+    var cc=cl?COACHES[cl.coach]:null;
+    var badge=cc
+      ?'<span style="background:'+cc.color+'22;color:'+cc.color+';padding:2px 7px;border-radius:20px;font-size:.72rem;font-weight:700;">✓ '+cc.name+'</span>'
+      :'<span style="background:#fef3c7;color:#d97706;padding:2px 7px;border-radius:20px;font-size:.72rem;font-weight:700;">⏳ Unclaimed</span>';
+    html+='<tr><td>'+badge+'</td><td>'+(pg?pg.emoji+' '+pg.label:s.playgroup)+'</td>'
+      +'<td>'+s.date+'</td><td>'+s.day+'</td>'
+      +'<td style="font-weight:600;color:#2563eb;">'+s.startTime+'–'+s.endTime+'</td>'
+      +'<td></td></tr>';
+  });
+  // Special shifts
+  specials.forEach(function(s){
+    var pg=getPG(s.playgroup);
+    var cc=s.coach?COACHES[s.coach]:null;
+    var badge=cc
+      ?'<span style="background:'+cc.color+'22;color:'+cc.color+';padding:2px 7px;border-radius:20px;font-size:.72rem;font-weight:700;">✓ '+cc.name+'</span>'
+      :'<span style="background:#fef3c7;color:#d97706;padding:2px 7px;border-radius:20px;font-size:.72rem;font-weight:700;">⏳ Unclaimed</span>';
+    html+='<tr><td>'+badge+'</td><td>'+(pg?pg.emoji+' '+pg.label:s.playgroup)+' <span style="font-size:.7rem;color:#7c3aed;">★ Special</span></td>'
+      +'<td>'+s.date+'</td><td>'+s.day+'</td>'
+      +'<td style="font-weight:600;color:#2563eb;">'+s.startTime+'–'+s.endTime+'</td>'
+      +'<td><button class="btn btn-danger btn-sm" data-did="'+s.id+'" class="del-shift-btn">🗑</button></td></tr>';
+  });
+  html+='</table></div>';
+  return html;
 }
-function pickSlot(btn){
-  document.querySelectorAll('.shift-slot-btn').forEach(function(b){b.classList.remove('selected');});
-  btn.classList.add('selected');
-  var day=btn.getAttribute('data-day'); var isPersonal=btn.getAttribute('data-personal')==='1';
-  document.getElementById('shDay').value=day;
-  var sel=document.getElementById('slotSelected'); var pgId=document.getElementById('shPG').value; var pg=getPG(pgId);
-  if(isPersonal){
-    document.getElementById('shStart').value=''; document.getElementById('shEnd').value='';
-    sel.innerHTML='<strong>Personal Classes</strong> · <strong>'+day+'</strong> · Enter time below'; sel.style.color='#7c3aed';
-  } else {
-    document.getElementById('shStart').value=btn.getAttribute('data-start');
-    document.getElementById('shEnd').value=btn.getAttribute('data-end');
-    sel.innerHTML=(pg?pg.emoji+' <strong>'+pg.label+'</strong>':'')+' · <strong>'+day+'</strong> · <strong>'+btn.getAttribute('data-start')+' - '+btn.getAttribute('data-end')+'</strong>';
-    sel.style.color='#16a34a';
-  }
+
+function filterAdminSessions(f){
+  var el=document.getElementById('adminSessionList');
+  if(el) el.innerHTML=buildAdminSessionList(f);
 }
-function applyManualTime(){
-  var s=document.getElementById('manualStart').value; var e=document.getElementById('manualEnd').value;
-  document.getElementById('shStart').value=s; document.getElementById('shEnd').value=e;
-  var day=document.getElementById('shDay').value; var sel=document.getElementById('slotSelected');
-  if(s&&e&&day){sel.innerHTML='<strong>Personal</strong> · <strong>'+day+'</strong> · <strong>'+s+' - '+e+'</strong>'; sel.style.color='#7c3aed';}
-}
+
+
 function addShift(){
   var pgId=document.getElementById('shPG').value;
-  var day=document.getElementById('shDay').value; var date=document.getElementById('shDate').value;
-  var start=document.getElementById('shStart').value; var end=document.getElementById('shEnd').value;
+  var day=document.getElementById('shDay').value;
+  var start=document.getElementById('shStart').value;
+  var end=document.getElementById('shEnd').value;
+  var date=document.getElementById('shDate').value;
   if(!pgId){alert('Please select a playgroup.');return;}
-  if(!day){alert('Please select a day/time slot.');return;}
+  if(!day){alert('Please select a day.');return;}
   if(!start||!end){alert('Please enter start and end time.');return;}
   if(!date){alert('Date is required for payroll tracking.');return;}
-  DB.shifts.push({id:uid(),coach:null,playgroup:pgId,day:day,date:date,startTime:start,endTime:end});
+  var id=uid();
+  DB.shifts=DB.shifts||[];
+  DB.shifts.push({id:id,coach:null,playgroup:pgId,day:day,date:date,startTime:start,endTime:end,special:true});
   saveShifts();
-  document.getElementById('shiftList').innerHTML=renderShiftList('all');
-  document.querySelectorAll('.shift-slot-btn').forEach(function(b){b.classList.remove('selected');});
-  document.getElementById('shDay').value=''; document.getElementById('shStart').value=''; document.getElementById('shEnd').value='';
-  document.getElementById('slotSelected').textContent='No slot selected'; document.getElementById('slotSelected').style.color='var(--sub)';
-  document.getElementById('shiftList').innerHTML=renderShiftList('all');
-  alert('✅ Shift released to coaches pool!');
+  document.getElementById('adminSessionList').innerHTML=buildAdminSessionList('all');
+  document.querySelectorAll('.del-shift-btn').forEach(function(b){b.addEventListener('click',function(){deleteShift(this.getAttribute('data-did'));});});
+  alert('✅ Special shift released to coaches pool!');
 }
+
+
 function renderShiftList(filter){
   var shifts=DB.shifts;
   if(filter==='claimed') shifts=DB.shifts.filter(function(s){return !!s.coach;});
@@ -1398,130 +1830,269 @@ function exportExpensesCSV(month){
 
 // ─── COACH VIEWS ──────────────────────────────────────────────────────────────
 // renderMySchedule removed — replaced by renderCoachPortal
+
+// ─── AUTO-SESSION GENERATION ──────────────────────────────────────────────────
+// Generate all sessions for the current month from ALL_SLOTS timetable
+var DAY_NUM = {Monday:1,Tuesday:2,Wednesday:3,Thursday:4,Friday:5,Saturday:6,Sunday:0};
+
+function getMonthSessions(year, month) {
+  // Returns array of {id, playgroup, day, date, startTime, endTime, coach}
+  // for every timetable slot that falls in the given month
+  var sessions = [];
+  // First and last day of month
+  var first = new Date(year, month-1, 1);
+  var last  = new Date(year, month, 0);
+  
+  Object.keys(ALL_SLOTS).forEach(function(pgId) {
+    if(pgId === 'personal') return; // personal handled separately
+    var slots = ALL_SLOTS[pgId];
+    slots.forEach(function(slot) {
+      var targetDay = DAY_NUM[slot.day];
+      // Walk through every day of the month
+      for(var d = new Date(first); d <= last; d.setDate(d.getDate()+1)) {
+        if(d.getDay() === targetDay) {
+          var dateStr = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+          var sid = 'sess_'+pgId+'_'+dateStr+'_'+slot.startTime.replace(':','');
+          sessions.push({
+            id: sid,
+            playgroup: pgId,
+            day: slot.day,
+            date: dateStr,
+            startTime: slot.startTime,
+            endTime: slot.endTime
+          });
+        }
+      }
+    });
+  });
+  
+  // Sort by date then time
+  sessions.sort(function(a,b){ return a.date.localeCompare(b.date)||a.startTime.localeCompare(b.startTime); });
+  return sessions;
+}
+
+function getClaimedCoach(sessionId) {
+  // Check DB.shifts for a claim on this session id
+  var shift = DB.shifts.filter(function(s){ return s.id === sessionId; })[0];
+  return shift ? shift.coach : null;
+}
+
+function claimSession(sessionId, pgId, day, date, startTime, endTime) {
+  if(!activeCoach) return;
+  // Remove any existing claim on this session first (by another coach)
+  var existing = DB.shifts.filter(function(s){ return s.id === sessionId; })[0];
+  if(existing) {
+    if(existing.coach === activeCoach) {
+      alert('You already have this shift!'); return;
+    }
+    alert('This shift was just claimed by '+coachName(existing.coach)+'!'); return;
+  }
+  DB.shifts.push({id:sessionId, coach:activeCoach, playgroup:pgId, day:day, date:date, startTime:startTime, endTime:endTime});
+  saveShifts();
+  renderCoachPortal();
+}
+
+function unclaimSession(sessionId) {
+  if(!confirm('Release this shift back to the pool?')) return;
+  DB.shifts = DB.shifts.filter(function(s){ return s.id !== sessionId; });
+  saveShifts();
+  renderCoachPortal();
+}
+
+function getSessionMonth() {
+  var now = new Date();
+  return { year: now.getFullYear(), month: now.getMonth()+1 };
+}
+
 // ─── COACH PORTAL ────────────────────────────────────────────────────────────
+function getUpcomingSessions() {
+  // Generate all sessions for current month + rest of next month
+  var now = new Date();
+  var sessions = [];
+  // Current month
+  var yr1 = now.getFullYear(), mo1 = now.getMonth()+1;
+  sessions = sessions.concat(getMonthSessions(yr1, mo1));
+  // Next month
+  var mo2 = mo1===12?1:mo1+1, yr2 = mo1===12?yr1+1:yr1;
+  sessions = sessions.concat(getMonthSessions(yr2, mo2));
+  // Filter to today and future only
+  var todayStr = todayDate();
+  sessions = sessions.filter(function(s){ return s.date >= todayStr; });
+  // Sort by date
+  sessions.sort(function(a,b){ return a.date.localeCompare(b.date); });
+  return sessions;
+}
+
+function getSessionClaim(sessId) {
+  // Check DB.shifts for a claim on this session id
+  return (DB.shifts||[]).filter(function(s){ return s.id===sessId; })[0]||null;
+}
+
 function renderCoachPortal(){
   var mc=document.getElementById('mainContent');
-  // If no coach selected yet, show coach selector
   if(!activeCoach){
-    var html='<div class="today-header"><div class="today-date">🏃 Coaches Portal</div><div class="today-sub">'+todayFull()+' — Select your name to continue</div></div>'
+    var html='<div class="today-header"><div class="today-date">🏃 Coaches Portal</div>'
+      +'<div class="today-sub">'+todayFull()+' — Select your name to continue</div></div>'
       +'<div class="card"><div class="card-title">Who are you?</div>'
       +'<div style="display:grid;gap:10px;">';
     Object.keys(COACHES).forEach(function(key){
-      var c=COACHES[key];
-      var summary=getCoachShiftSummary(key);
+      var co=COACHES[key];
+      var claimed=(DB.shifts||[]).filter(function(s){return s.coach===key;}).length;
+      var hrs=getCoachHours(key).toFixed(1);
       html+='<div id="coach-btn-'+key+'" data-key="'+key+'" class="coach-selector-btn" style="display:flex;align-items:center;gap:12px;padding:14px 16px;border:2px solid var(--border);border-radius:12px;background:#f8fafc;cursor:pointer;margin-bottom:4px;">'
-        +'<div style="width:40px;height:40px;border-radius:50%;background:'+c.color+';display:flex;align-items:center;justify-content:center;font-size:1.4rem;font-weight:800;color:#fff;flex-shrink:0;">'+c.name[0]+'</div>'
-        +'<div><div style="font-weight:700;font-size:1rem;">'+c.name+'</div>'
-        +'<div style="font-size:.78rem;color:var(--sub);">'+summary+'</div></div>'
+        +'<div style="width:40px;height:40px;border-radius:50%;background:'+co.color+';display:flex;align-items:center;justify-content:center;font-size:1.4rem;font-weight:800;color:#fff;flex-shrink:0;">'+co.name[0]+'</div>'
+        +'<div><div style="font-weight:700;font-size:1rem;color:#1e293b;">'+co.name+'</div>'
+        +'<div style="font-size:.78rem;color:var(--sub);">'+claimed+' shifts claimed · '+hrs+' hrs this month</div></div>'
+        +'<div style="margin-left:auto;font-size:.8rem;color:#2563eb;font-weight:700;">Select →</div>'
         +'</div>';
     });
     html+='</div></div>';
     mc.innerHTML=html;
-    // Attach click handlers after DOM is set
     document.querySelectorAll('.coach-selector-btn').forEach(function(btn){
-      btn.addEventListener('click', function(){
-        selectActiveCoach(this.getAttribute('data-key'));
-      });
-      btn.addEventListener('mouseover', function(){this.style.borderColor='#2563eb';this.style.background='#eff6ff';});
-      btn.addEventListener('mouseout', function(){this.style.borderColor='var(--border)';this.style.background='#f8fafc';});
+      btn.addEventListener('click',function(){selectActiveCoach(this.getAttribute('data-key'));});
+      btn.addEventListener('mouseover',function(){this.style.borderColor='#2563eb';this.style.background='#eff6ff';});
+      btn.addEventListener('mouseout',function(){this.style.borderColor='var(--border)';this.style.background='#f8fafc';});
     });
     return;
   }
-  // Coach selected — show their dashboard
-  var coach=COACHES[activeCoach];
-  var myShifts=DB.shifts.filter(function(s){return s.coach===activeCoach;});
-  var unclaimed=DB.shifts.filter(function(s){return !s.coach;});
-  var today=todayDate(); var todayDay2=todayDay();
 
-  var html='<div style="background:'+coach.color+';color:#fff;border-radius:var(--radius);padding:14px 16px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;">'
-    +'<div><div style="font-weight:900;font-size:1.1rem;">👋 Hi '+coach.name+'!</div><div style="opacity:.8;font-size:.85rem;">'+todayFull()+'</div></div>'
-    +'<button onclick="activeCoach=null;renderCoachPortal();" style="background:rgba(255,255,255,.2);border:none;color:#fff;padding:6px 12px;border-radius:8px;cursor:pointer;font-size:.82rem;font-weight:600;">Switch Coach</button>'
+  var co=COACHES[activeCoach];
+  var sessions=getUpcomingSessions();
+  var myClaimed=sessions.filter(function(s){
+    var cl=getSessionClaim(s.id); return cl&&cl.coach===activeCoach;
+  });
+  var available=sessions.filter(function(s){
+    var cl=getSessionClaim(s.id); return !cl;
+  });
+  var todayStr=todayDate();
+
+  var html='<div style="background:'+co.color+';color:#fff;border-radius:var(--radius);padding:14px 16px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;">'
+    +'<div><div style="font-weight:900;font-size:1.1rem;">👋 Hi '+co.name+'!</div>'
+    +'<div style="opacity:.8;font-size:.85rem;">'+todayFull()+'</div></div>'
+    +'<button onclick="activeCoach=null;renderCoachPortal();" style="background:rgba(255,255,255,.2);border:none;color:#fff;padding:6px 12px;border-radius:8px;cursor:pointer;font-size:.82rem;font-weight:600;">← Switch</button>'
     +'</div>';
 
   // Stats
-  var todayShifts=myShifts.filter(function(s){return s.day===todayDay2;});
   html+='<div class="stat-grid">'
-    +'<div class="stat-box blue"><div class="stat-num">'+myShifts.length+'</div><div class="stat-label">My Shifts</div></div>'
-    +'<div class="stat-box gold"><div class="stat-num">'+todayShifts.length+'</div><div class="stat-label">Today</div></div>'
+    +'<div class="stat-box blue"><div class="stat-num">'+myClaimed.length+'</div><div class="stat-label">My Sessions</div></div>'
+    +'<div class="stat-box gold"><div class="stat-num">'+available.length+'</div><div class="stat-label">Available</div></div>'
     +'<div class="stat-box green"><div class="stat-num">'+getCoachHours(activeCoach).toFixed(1)+'</div><div class="stat-label">Hours</div></div>'
-    +'<div class="stat-box"><div class="stat-num" style="color:#7c3aed;">'+unclaimed.length+'</div><div class="stat-label">Available</div></div>'
+    +'<div class="stat-box"><div class="stat-num" style="color:#7c3aed;">'+sessions.filter(function(s){var cl=getSessionClaim(s.id);return cl&&cl.coach!==activeCoach;}).length+'</div><div class="stat-label">Taken</div></div>'
     +'</div>';
 
-  // Unclaimed shifts available to claim
-  if(unclaimed.length){
-    html+='<div class="card"><div class="card-title">⚡ Available Shifts — Claim One</div>';
-    var ord=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
-    var sorted=unclaimed.slice().sort(function(a,b){
-      if(a.date&&b.date) return a.date.localeCompare(b.date);
-      return ord.indexOf(a.day)-ord.indexOf(b.day);
+  // Available sessions to claim
+  if(available.length){
+    html+='<div class="card"><div class="card-title">⚡ Available Sessions — Claim Yours</div>';
+    var grouped={};
+    available.forEach(function(s){
+      var wk=s.date.substring(0,7);
+      if(!grouped[wk]) grouped[wk]=[];
+      grouped[wk].push(s);
     });
-    sorted.forEach(function(s){
-      var pg=getPG(s.playgroup);
-      html+='<div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--border);">'
-        +'<div style="flex:1">'
-        +'<div style="font-weight:700;font-size:.95rem;">'+(pg?pg.emoji+' '+pg.label:s.playgroup)+'</div>'
-        +'<div style="font-size:.82rem;color:var(--sub);margin-top:2px;">'+s.day+(s.date?' · '+s.date:'')+' · '+s.startTime+'–'+s.endTime+'</div>'
-        +'</div>'
-        +'<button data-sid="'+s.id+'" onclick="claimShift(this.getAttribute(\'data-sid\'))" style="background:#2563eb;color:#fff;border:none;padding:9px 16px;border-radius:8px;font-weight:700;font-size:.82rem;cursor:pointer;">Claim</button>'
-        +'</div>';
+    Object.keys(grouped).sort().forEach(function(wk){
+      var d=new Date(wk+'-01');
+      html+='<div style="font-size:.75rem;font-weight:700;color:var(--sub);letter-spacing:1px;text-transform:uppercase;padding:8px 0 4px;">'+d.toLocaleString('en-ZA',{month:'long',year:'numeric'})+'</div>';
+      grouped[wk].forEach(function(s){
+        var pg=getPG(s.playgroup);
+        var isToday=s.date===todayStr;
+        html+='<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);">'
+          +'<div style="flex:1;">'
+          +(isToday?'<span style="background:#fef3c7;color:#d97706;font-size:.7rem;font-weight:700;padding:1px 6px;border-radius:10px;margin-right:4px;">TODAY</span>':'')
+          +'<span style="font-weight:700;">'+(pg?pg.emoji+' '+pg.label:s.playgroup)+'</span>'
+          +'<div style="font-size:.8rem;color:var(--sub);margin-top:2px;">'+s.day+' '+s.date+' · '+s.startTime+'–'+s.endTime+'</div>'
+          +'</div>'
+          +'<button data-sid="'+s.id+'" class="claim-btn" style="background:#2563eb;color:#fff;border:none;padding:9px 18px;border-radius:8px;font-weight:700;font-size:.82rem;cursor:pointer;flex-shrink:0;">Claim</button>'
+          +'</div>';
+      });
     });
     html+='</div>';
   } else {
-    html+='<div class="card" style="text-align:center;padding:20px;"><div style="font-size:2rem;">✅</div><div style="font-weight:700;margin-top:8px;">No unclaimed shifts right now</div><div style="color:var(--sub);font-size:.85rem;margin-top:4px;">Amanda will release more shifts soon.</div></div>';
+    html+='<div class="card" style="text-align:center;padding:20px;">'
+      +'<div style="font-size:2rem;">✅</div>'
+      +'<div style="font-weight:700;margin-top:8px;">All sessions are claimed!</div>'
+      +'<div style="color:var(--sub);font-size:.85rem;margin-top:4px;">Check back when new sessions open.</div>'
+      +'</div>';
   }
 
-  // My claimed shifts
-  if(myShifts.length){
-    html+='<div class="card"><div class="card-title">📅 My Claimed Shifts</div>';
-    var ord2=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
-    var mySorted=myShifts.slice().sort(function(a,b){
-      if(a.date&&b.date) return a.date.localeCompare(b.date);
-      return ord2.indexOf(a.day)-ord2.indexOf(b.day);
-    });
-    mySorted.forEach(function(s){
+  // My claimed sessions
+  if(myClaimed.length){
+    html+='<div class="card"><div class="card-title">📅 My Claimed Sessions</div>';
+    myClaimed.forEach(function(s){
       var pg=getPG(s.playgroup);
-      var isToday=s.day===todayDay2;
-      html+='<div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--border);'+(isToday?'background:#fffbeb;border-radius:8px;padding:12px;margin-bottom:4px;':'')+'"">'
-        +'<div style="flex:1">'
-        +(isToday?'<span style="background:#fef3c7;color:#d97706;font-size:.7rem;font-weight:700;padding:2px 7px;border-radius:20px;margin-bottom:4px;display:inline-block;">🟡 TODAY</span><br/>':'')
-        +'<div style="font-weight:700;font-size:.95rem;">'+(pg?pg.emoji+' '+pg.label:s.playgroup)+'</div>'
-        +'<div style="font-size:.82rem;color:var(--sub);margin-top:2px;">'+s.day+(s.date?' · '+s.date:'')+' · '+s.startTime+'–'+s.endTime+'</div>'
+      var isToday=s.date===todayStr;
+      html+='<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);">'
+        +'<div style="flex:1;">'
+        +(isToday?'<span style="background:#fef3c7;color:#d97706;font-size:.7rem;font-weight:700;padding:1px 6px;border-radius:10px;margin-right:4px;">🟡 TODAY</span>':'')
+        +'<span style="font-weight:700;">'+(pg?pg.emoji+' '+pg.label:s.playgroup)+'</span>'
+        +'<div style="font-size:.8rem;color:var(--sub);margin-top:2px;">'+s.day+' '+s.date+' · '+s.startTime+'–'+s.endTime+'</div>'
         +'</div>'
-        +'<button data-sid="'+s.id+'" onclick="releaseShift(this.getAttribute(\'data-sid\'))" style="background:#fee2e2;color:#dc2626;border:none;padding:7px 12px;border-radius:8px;font-weight:700;font-size:.78rem;cursor:pointer;">Release</button>'
+        +'<button data-sid="'+s.id+'" class="release-btn" style="background:#fee2e2;color:#dc2626;border:none;padding:7px 14px;border-radius:8px;font-weight:700;font-size:.78rem;cursor:pointer;flex-shrink:0;">Release</button>'
         +'</div>';
     });
     html+='</div>';
   }
 
-  // Full schedule (all coaches)
-  html+='<div class="card"><div class="card-title">📋 Full Schedule — All Coaches</div>';
-  var allClaimed=DB.shifts.filter(function(s){return s.coach;});
+  // Full schedule — all coaches
+  var allClaimed=sessions.filter(function(s){return !!getSessionClaim(s.id);});
   if(allClaimed.length){
-    html+='<div class="table-wrap"><table><tr><th>Coach</th><th>Group</th><th>Day</th><th>Time</th><th>Date</th></tr>';
-    allClaimed.slice().sort(function(a,b){return (a.date||'').localeCompare(b.date||'');}).forEach(function(s){
+    html+='<div class="card"><div class="card-title">📋 Full Schedule — All Coaches</div>'
+      +'<div class="table-wrap"><table><tr><th>Coach</th><th>Group</th><th>Date</th><th>Time</th></tr>';
+    allClaimed.forEach(function(s){
       var pg=getPG(s.playgroup);
-      var cc=COACHES[s.coach];
-      html+='<tr><td><span style="background:'+(cc?cc.color:'#64748b')+'22;color:'+(cc?cc.color:'#64748b')+';padding:2px 8px;border-radius:20px;font-weight:700;font-size:.78rem;">'+(cc?cc.name:s.coach)+'</span></td>'
-        +'<td>'+(pg?pg.emoji+' '+pg.label:s.playgroup)+'</td><td>'+s.day+'</td>'
+      var cl=getSessionClaim(s.id);
+      var cc=cl?COACHES[cl.coach]:null;
+      html+='<tr>'
+        +'<td><span style="background:'+(cc?cc.color:'#64748b')+'22;color:'+(cc?cc.color:'#64748b')+';padding:2px 8px;border-radius:20px;font-weight:700;font-size:.78rem;">'+(cc?cc.name:'Unknown')+'</span></td>'
+        +'<td>'+(pg?pg.emoji+' '+pg.label:s.playgroup)+'</td>'
+        +'<td>'+s.date+'</td>'
         +'<td style="font-weight:600;color:#2563eb;">'+s.startTime+'–'+s.endTime+'</td>'
-        +'<td>'+(s.date||'—')+'</td></tr>';
+        +'</tr>';
     });
-    html+='</table></div>';
-  } else {
-    html+='<div style="color:var(--sub);font-size:.85rem;">No shifts claimed yet.</div>';
+    html+='</table></div></div>';
   }
-  html+='</div>';
 
   mc.innerHTML=html;
+
+  // Attach claim/release listeners
+  document.querySelectorAll('.claim-btn').forEach(function(btn){
+    btn.addEventListener('click',function(){claimSession(this.getAttribute('data-sid'));});
+  });
+  document.querySelectorAll('.release-btn').forEach(function(btn){
+    btn.addEventListener('click',function(){releaseSession(this.getAttribute('data-sid'));});
+  });
 }
 
 function selectActiveCoach(key){
   activeCoach=key;
   renderCoachPortal();
-  // Also switch nav tab to portal
-  document.querySelectorAll('.nav-tab').forEach(function(t){t.classList.remove('active');});
-  document.querySelector('.nav-tab')&&document.querySelector('.nav-tab').classList.add('active');
 }
+
+function claimSession(sessId){
+  // Check not already claimed
+  var existing=getSessionClaim(sessId);
+  if(existing){ alert('This session was just claimed by '+coachName(existing.coach)+'!'); renderCoachPortal(); return; }
+  // Add to DB.shifts
+  DB.shifts=DB.shifts||[];
+  // Get session info from generated sessions
+  var allSess=getUpcomingSessions();
+  var sess=allSess.filter(function(s){return s.id===sessId;})[0];
+  if(!sess){ alert('Session not found'); return; }
+  DB.shifts.push({id:sessId, coach:activeCoach, playgroup:sess.playgroup, day:sess.day, date:sess.date, startTime:sess.startTime, endTime:sess.endTime});
+  saveShifts();
+  renderCoachPortal();
+}
+
+function releaseSession(sessId){
+  if(!confirm('Release this session back to the pool?')) return;
+  DB.shifts=(DB.shifts||[]).filter(function(s){return s.id!==sessId;});
+  saveShifts();
+  renderCoachPortal();
+}
+
+// Keep old claimShift/releaseShift for backward compat
+function claimShift(id){ claimSession(id); }
+function releaseShift(id){ releaseSession(id); }
+
 
 function claimShift(id){
   var s=DB.shifts.filter(function(x){return x.id===id;})[0];
@@ -1539,7 +2110,9 @@ function releaseShift(id){
 }
 
 function getCoachHours(key){
-  return DB.shifts.filter(function(s){return s.coach===key&&s.startTime&&s.endTime;}).reduce(function(acc,s){
+  var sm=getSessionMonth();
+  var sessions=getMonthSessions(sm.year,sm.month);
+  return sessions.filter(function(s){return getClaimedCoach(s.id)===key&&s.startTime&&s.endTime;}).reduce(function(acc,s){
     var sh=parseInt(s.startTime.split(':')[0])*60+parseInt(s.startTime.split(':')[1]);
     var eh=parseInt(s.endTime.split(':')[0])*60+parseInt(s.endTime.split(':')[1]);
     return acc+(eh-sh)/60;
@@ -1547,9 +2120,11 @@ function getCoachHours(key){
 }
 
 function getCoachShiftSummary(key){
-  var claimed=DB.shifts.filter(function(s){return s.coach===key;}).length;
+  var sm=getSessionMonth();
+  var sessions=getMonthSessions(sm.year,sm.month);
+  var claimed=sessions.filter(function(s){return getClaimedCoach(s.id)===key;}).length;
   var hrs=getCoachHours(key).toFixed(1);
-  return claimed+' shifts · '+hrs+' hrs';
+  return claimed+' shifts · '+hrs+' hrs this month';
 }
 
 function renderMarkAttendance(){
