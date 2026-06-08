@@ -1298,46 +1298,78 @@ function savePin(k){
 
 // ─── SCHEDULE ─────────────────────────────────────────────────────────────────
 function renderScheduleAdmin(){
-  var mc=document.getElementById('mainContent');
-  var pgOpts=PLAYGROUPS.map(function(p){return '<option value="'+p.id+'">'+p.emoji+' '+p.label+'</option>';}).join('');
-  mc.innerHTML='<div class="card"><div class="card-title">📅 Release a Special Shift</div>'
-    +'<div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:.83rem;color:#15803d;">'
-    +'✅ Use this for extra or special sessions outside the normal timetable. Once released, any coach can claim it.</div>'
-    +'<div class="form-row"><label class="form-label">1. Playgroup</label>'
-    +'<select class="form-select" id="shPG" ><option value="">-- Choose playgroup --</option>'+pgOpts+'</select></div>'
-    +'<div class="form-row"><label class="form-label">2. Day</label>'
-    +'<select class="form-select" id="shDay">'
-    +'<option value="">-- Select day --</option>'
-    +'<option value="Monday">Monday</option><option value="Tuesday">Tuesday</option>'
-    +'<option value="Wednesday">Wednesday</option><option value="Thursday">Thursday</option>'
-    +'<option value="Friday">Friday</option><option value="Saturday">Saturday</option>'
-    +'<option value="Sunday">Sunday</option>'
-    +'</select></div>'
-    +'<div class="form-row"><label class="form-label">3. Time</label>'
-    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">'
-    +'<div><label class="form-label">Start</label><input type="time" class="form-input" id="shStart"></div>'
-    +'<div><label class="form-label">End</label><input type="time" class="form-input" id="shEnd"></div>'
-    +'</div></div>'
-    +'<div class="form-row"><label class="form-label">4. Date <span style="color:var(--red);font-size:.78rem">★ Required for payroll</span></label>'
-    +'<input type="date" class="form-input" id="shDate" value="'+todayDate()+'"></div>'
-    +'<button class="btn btn-primary" style="width:100%" onclick="addShift()">🚀 Release to Coaches Pool</button></div>'
-    +'<div class="card"><div class="card-title" style="display:flex;align-items:center;justify-content:space-between;">'
-    +'<span>📋 All Upcoming Sessions</span>'
-    +'<span style="font-size:.78rem;color:var(--sub);font-weight:400;">Auto-generated from timetable + special shifts</span>'
-    +'</div>'
-    +'<div id="adminFilterBar" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">'
-    +'<button class="btn btn-sm" data-asf="all" style="background:#f1f5f9;">All</button>'
-    +'<button class="btn btn-sm" data-asf="claimed" style="background:#dcfce7;color:#16a34a;">✓ Claimed</button>'
-    +'<button class="btn btn-sm" data-asf="unclaimed" style="background:#fef3c7;color:#d97706;">⏳ Unclaimed</button>'
-    +PLAYGROUPS.map(function(p){return '<button class="btn btn-sm" data-asf="'+p.id+'" style="background:'+p.color+'22;color:'+p.color+';">'+p.emoji+' '+p.label+'</button>';}).join('')
-    +'</div>'
-    +'<div id="adminSessionList">'+buildAdminSessionList('all')+'</div></div>';
-  setTimeout(function(){
-    document.querySelectorAll('#adminFilterBar [data-asf]').forEach(function(btn){
-      btn.addEventListener('click',function(){filterAdminSessions(this.getAttribute('data-asf'));});
+  var mc = document.getElementById('mainContent');
+  try {
+    var pgOpts = PLAYGROUPS.map(function(p){
+      return '<option value="'+p.id+'">'+p.emoji+' '+p.label+'</option>';
+    }).join('');
+
+    var html = '<div class="card">'
+      + '<div class="card-title">📅 Release a Special Shift</div>'
+      + '<div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:.83rem;color:#15803d;">'
+      + '✅ Use this for extra or special sessions outside the normal timetable. Once released, any coach can claim it.</div>'
+      + '<div class="form-row"><label class="form-label">1. Playgroup</label>'
+      + '<select class="form-select" id="shPG"><option value="">-- Choose playgroup --</option>'+pgOpts+'</select></div>'
+      + '<div class="form-row"><label class="form-label">2. Day</label>'
+      + '<select class="form-select" id="shDay">'
+      + '<option value="">-- Select day --</option>'
+      + '<option value="Monday">Monday</option>'
+      + '<option value="Tuesday">Tuesday</option>'
+      + '<option value="Wednesday">Wednesday</option>'
+      + '<option value="Thursday">Thursday</option>'
+      + '<option value="Friday">Friday</option>'
+      + '<option value="Saturday">Saturday</option>'
+      + '<option value="Sunday">Sunday</option>'
+      + '</select></div>'
+      + '<div class="form-row"><label class="form-label">3. Time</label>'
+      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">'
+      + '<div><label class="form-label">Start</label><input type="time" class="form-input" id="shStart"></div>'
+      + '<div><label class="form-label">End</label><input type="time" class="form-input" id="shEnd"></div>'
+      + '</div></div>'
+      + '<div class="form-row"><label class="form-label">4. Date <span style="color:var(--red);font-size:.78rem">★ Required for payroll</span></label>'
+      + '<input type="date" class="form-input" id="shDate" value="'+todayDate()+'"></div>'
+      + '<button class="btn btn-primary" style="width:100%" id="addShiftBtn">🚀 Release to Coaches Pool</button>'
+      + '</div>'
+      + '<div class="card">'
+      + '<div class="card-title" style="display:flex;align-items:center;justify-content:space-between;">'
+      + '<span>📋 All Upcoming Sessions</span>'
+      + '<span style="font-size:.78rem;color:var(--sub);font-weight:400;">Timetable + special shifts</span>'
+      + '</div>'
+      + '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;" id="adminFilterBar">'
+      + '<button class="btn btn-sm asf-btn" data-asf="all" style="background:#f1f5f9;">All</button>'
+      + '<button class="btn btn-sm asf-btn" data-asf="claimed" style="background:#dcfce7;color:#16a34a;">✓ Claimed</button>'
+      + '<button class="btn btn-sm asf-btn" data-asf="unclaimed" style="background:#fef3c7;color:#d97706;">⏳ Unclaimed</button>';
+
+    PLAYGROUPS.forEach(function(p){
+      html += '<button class="btn btn-sm asf-btn" data-asf="'+p.id+'" style="background:'+p.color+'22;color:'+p.color+';">'+p.emoji+' '+p.label+'</button>';
     });
-  },50);
+
+    html += '</div>'
+      + '<div id="adminSessionList">Loading...</div>'
+      + '</div>';
+
+    mc.innerHTML = html;
+
+    // Wire up add button
+    document.getElementById('addShiftBtn').addEventListener('click', addShift);
+
+    // Wire up filter buttons
+    document.querySelectorAll('.asf-btn').forEach(function(btn){
+      btn.addEventListener('click', function(){ filterAdminSessions(this.getAttribute('data-asf')); });
+    });
+
+    // Populate session list
+    document.getElementById('adminSessionList').innerHTML = buildAdminSessionList('all');
+
+    // Wire up any delete buttons
+    wireDeleteBtns();
+
+  } catch(err) {
+    mc.innerHTML = '<div class="card"><div style="color:#dc2626;padding:14px;">Error loading Special Shifts: '+err.message+'</div></div>';
+    console.error('renderScheduleAdmin error:', err);
+  }
 }
+
 
 function buildAdminSessionList(filter){
   var sessions=getUpcomingSessions();
@@ -1376,9 +1408,14 @@ function buildAdminSessionList(filter){
   return html;
 }
 
+function wireDeleteBtns(){
+  document.querySelectorAll('.del-shift-btn').forEach(function(b){
+    b.addEventListener('click',function(){ deleteShift(this.getAttribute('data-did')); });
+  });
+}
 function filterAdminSessions(f){
   var el=document.getElementById('adminSessionList');
-  if(el) el.innerHTML=buildAdminSessionList(f);
+  if(el){ el.innerHTML=buildAdminSessionList(f); wireDeleteBtns(); }
 }
 
 
@@ -1690,56 +1727,94 @@ function defaultPayrollMonth() {
 }
 
 function renderPayroll(){
-  var mc=document.getElementById('mainContent'); var now=new Date();
-  var selMonth=DB.payrollMonth||defaultPayrollMonth();
-  var yr=parseInt(selMonth.split('-')[0]); var mo=parseInt(selMonth.split('-')[1]);
+  var mc = document.getElementById('mainContent');
+  var selMonth = DB.payrollMonth || defaultPayrollMonth();
+  var yr = parseInt(selMonth.split('-')[0]);
+  var mo = parseInt(selMonth.split('-')[1]);
   var periodLabel = payrollPeriodLabel(yr, mo);
-  var grandTotal=0;
-  var rows=Object.keys(USERS).filter(function(k){return USERS[k].role==='coach';}).map(function(ck){
-    var u=USERS[ck]; var rate=COACH_RATES[ck]||100;
-    var shifts=DB.shifts.filter(function(s){
-      if(s.coach!==ck||!s.date) return false;
-      return inPayrollPeriod(s.date, yr, mo);
+  var grandTotal = 0;
+
+  // Build per-coach breakdown using COACHES object
+  var coachRows = Object.keys(COACHES).map(function(ck){
+    var co = COACHES[ck];
+    var rate = COACH_RATES[ck] || 100;
+    var shifts = (DB.shifts||[]).filter(function(s){
+      return s.coach === ck && !!s.date && inPayrollPeriod(s.date, yr, mo);
     });
-    var ps=(DB.personalSessions||[]).filter(function(s){
-      if(s.coach!==ck||!s.date) return false;
-      return inPayrollPeriod(s.date, yr, mo);
+    var ps = (DB.personalSessions||[]).filter(function(s){
+      return s.coach === ck && !!s.date && inPayrollPeriod(s.date, yr, mo);
     });
-    var total=shifts.length+ps.length; var pay=total*rate; grandTotal+=pay;
-    return {ck:ck,u:u,rate:rate,shifts:shifts,ps:ps,total:total,pay:pay};
+    // Also count auto-generated claimed sessions
+    var autoSessions = getMonthSessions(yr, mo).filter(function(s){
+      var cl = getSessionClaim(s.id);
+      return cl && cl.coach === ck && inPayrollPeriod(s.date, yr, mo);
+    });
+    // Deduplicate — DB.shifts already stores claimed auto-sessions
+    var groupCount = shifts.length;
+    var personalCount = ps.length;
+    var total = groupCount + personalCount;
+    var pay = total * rate;
+    grandTotal += pay;
+    // Hours
+    var hrs = shifts.reduce(function(acc,s){
+      if(!s.startTime||!s.endTime) return acc;
+      var sh = parseInt(s.startTime.split(':')[0])*60+parseInt(s.startTime.split(':')[1]);
+      var eh = parseInt(s.endTime.split(':')[0])*60+parseInt(s.endTime.split(':')[1]);
+      return acc+(eh-sh)/60;
+    },0);
+    return {ck:ck,co:co,rate:rate,groupCount:groupCount,personalCount:personalCount,total:total,pay:pay,hrs:hrs};
   });
-  var html='<div class="card"><div class="card-title">💰 Monthly Payroll</div>'
-    +'<div style="background:#eff6ff;border:1.5px solid #2563eb;border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:.83rem;color:#1e40af">'
-    +'📅 Pay period: <strong>'+periodLabel+'</strong> (26th–25th cycle)</div>'
-    +'<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">'
-    +'<div class="form-row" style="margin:0;flex:1;min-width:180px"><label class="form-label">Select Pay Period (ending month)</label>'
-    +'<input type="month" class="form-input" value="'+selMonth+'" onchange="setPayrollMonth(this.value)"></div>'
-    +'<div style="text-align:right"><div style="font-size:.78rem;color:var(--sub)">Total payout</div>'
-    +'<div style="font-size:1.8rem;font-weight:900;color:var(--green)">R'+grandTotal.toLocaleString()+'</div>'
-    +'<div style="font-size:.75rem;color:var(--sub)">'+periodLabel+'</div></div></div>';
-  rows.forEach(function(r){
-    html+='<div style="border:1.5px solid var(--border);border-radius:12px;padding:14px;margin-bottom:12px">'
-      +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">'
-      +'<div class="avatar" style="background:'+r.u.color+';width:40px;height:40px">'+r.u.avatar+'</div>'
-      +'<div style="flex:1"><div style="font-weight:800">'+r.u.name+'</div><div style="font-size:.76rem;color:var(--sub)">Rate: <strong>R'+r.rate+'/class</strong></div></div>'
-      +'<div style="text-align:right"><div style="font-size:1.5rem;font-weight:900;color:var(--green)">R'+r.pay.toLocaleString()+'</div><div style="font-size:.75rem;color:var(--sub)">'+r.total+' classes</div></div></div>'
-      +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center">'
-      +'<div style="background:#f1f5f9;border-radius:8px;padding:8px"><div style="font-size:1.2rem;font-weight:900;color:#2563eb">'+r.shifts.length+'</div><div style="font-size:.7rem;color:var(--sub)">Group shifts</div></div>'
-      +'<div style="background:#f1f5f9;border-radius:8px;padding:8px"><div style="font-size:1.2rem;font-weight:900;color:#7c3aed">'+r.ps.length+'</div><div style="font-size:.7rem;color:var(--sub)">Personal</div></div>'
-      +'<div style="background:#dcfce7;border-radius:8px;padding:8px"><div style="font-size:1.2rem;font-weight:900;color:var(--green)">R'+r.pay.toLocaleString()+'</div><div style="font-size:.7rem;color:var(--sub)">Total pay</div></div></div>';
-    if(r.shifts.length||r.ps.length){
-      html+='<div style="margin-top:10px;font-size:.78rem;color:var(--sub)">';
-      r.shifts.forEach(function(s){var pg=getPG(s.playgroup);html+='<div style="padding:3px 0;border-top:1px solid var(--border);display:flex;justify-content:space-between"><span>'+(pg?pg.emoji+' '+pg.label:s.playgroup)+' · '+s.day+' · '+s.date+'</span><span style="color:var(--green);font-weight:700">R'+r.rate+'</span></div>';});
-      r.ps.forEach(function(s){html+='<div style="padding:3px 0;border-top:1px solid var(--border);display:flex;justify-content:space-between"><span>🧍 Personal · '+h(s.clientName)+' · '+s.date+'</span><span style="color:var(--green);font-weight:700">R'+r.rate+'</span></div>';});
-      html+='</div>';
-    }
-    html+='</div>';
+
+  var html = '<div class="card"><div class="card-title">💰 Monthly Payroll</div>'
+    + '<div style="background:#eff6ff;border:1.5px solid #2563eb;border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:.83rem;color:#1e40af">'
+    + '📅 Pay period: <strong>'+periodLabel+'</strong> (26th–25th cycle)</div>'
+    + '<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">'
+    + '<div class="form-row" style="margin:0;flex:1;min-width:180px"><label class="form-label">Select Pay Period (ending month)</label>'
+    + '<input type="month" class="form-input" id="payMonthInput" value="'+selMonth+'"></div>'
+    + '<div style="text-align:right"><div style="font-size:.78rem;color:var(--sub)">Total payout</div>'
+    + '<div style="font-size:1.8rem;font-weight:900;color:var(--green)">R'+grandTotal.toLocaleString()+'</div>'
+    + '<div style="font-size:.75rem;color:var(--sub)">'+periodLabel+'</div></div></div>';
+
+  // Per-coach rows
+  coachRows.forEach(function(r){
+    if(r.total === 0) return; // skip coaches with no shifts this period
+    html += '<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:10px;">'
+      + '<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;">'
+      + '<div style="width:40px;height:40px;border-radius:50%;background:'+r.co.color+';display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1.1rem;color:#fff;flex-shrink:0;">'+r.co.name[0]+'</div>'
+      + '<div style="flex:1"><div style="font-weight:700;font-size:1rem;">'+r.co.name+'</div>'
+      + '<div style="font-size:.78rem;color:var(--sub);">Rate: R'+r.rate+'/class</div></div>'
+      + '<div style="text-align:right"><div style="font-size:1.4rem;font-weight:900;color:var(--green)">R'+r.pay.toLocaleString()+'</div>'
+      + '<div style="font-size:.75rem;color:var(--sub)">'+r.total+' classes</div></div>'
+      + '</div>'
+      + '<div class="stat-grid" style="grid-template-columns:repeat(3,1fr);gap:8px;">'
+      + '<div class="stat-box blue" style="padding:10px;"><div class="stat-num" style="font-size:1.3rem;">'+r.groupCount+'</div><div class="stat-label">Group Shifts</div></div>'
+      + '<div class="stat-box gold" style="padding:10px;"><div class="stat-num" style="font-size:1.3rem;">'+r.personalCount+'</div><div class="stat-label">Personal</div></div>'
+      + '<div class="stat-box green" style="padding:10px;"><div class="stat-num" style="font-size:1.3rem;">'+r.hrs.toFixed(1)+'</div><div class="stat-label">Hours</div></div>'
+      + '</div></div>';
   });
-  var undated=DB.shifts.filter(function(s){return !s.date;});
-  if(undated.length) html+='<div style="background:#fef3c7;border:1.5px solid #f59e0b;border-radius:10px;padding:12px 14px;margin-bottom:12px"><div style="font-weight:700;color:#92400e">⚠️ '+undated.length+' shift(s) have no date — excluded from payroll</div></div>';
-  html+='<button class="btn btn-gold" style="width:100%" onclick="exportPayrollCSV()">📥 Export Payroll CSV</button></div>';
-  mc.innerHTML=html;
+
+  // Show message if no shifts at all
+  var anyShifts = coachRows.some(function(r){return r.total>0;});
+  if(!anyShifts){
+    html += '<div style="text-align:center;padding:20px;color:var(--sub);">No claimed shifts found for this pay period.</div>';
+  }
+
+  // Export button
+  html += '<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:12px;display:flex;justify-content:space-between;align-items:center;margin-top:8px;">'
+    + '<div style="font-weight:700;color:#15803d;">📥 Export Payroll CSV</div>'
+    + '<div style="font-size:1.1rem;font-weight:900;color:var(--green);font-family:monospace;">TOTAL: R'+grandTotal.toLocaleString()+'</div>'
+    + '</div>'
+    + '</div>';
+
+  mc.innerHTML = html;
+
+  // Wire month input
+  document.getElementById('payMonthInput').addEventListener('change', function(){
+    setPayrollMonth(this.value);
+  });
 }
+
+
 function setPayrollMonth(v){DB.payrollMonth=v;savePayrollMonth();renderPayroll();}
 
 // ─── EXPENSES ─────────────────────────────────────────────────────────────────
