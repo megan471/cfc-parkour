@@ -1932,14 +1932,16 @@ function getMonthSessions(year, month) {
       for(var d = new Date(first); d <= last; d.setDate(d.getDate()+1)) {
         if(d.getDay() === targetDay) {
           var dateStr = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
-          var sid = 'sess_'+pgId+'_'+dateStr+'_'+slot.startTime.replace(':','');
+          var st = slot.startTime || slot.start || '';
+          var et = slot.endTime   || slot.end   || '';
+          var sid = 'sess_'+pgId+'_'+dateStr+'_'+st.replace(':','');
           sessions.push({
             id: sid,
             playgroup: pgId,
             day: slot.day,
             date: dateStr,
-            startTime: slot.startTime,
-            endTime: slot.endTime
+            startTime: st,
+            endTime: et
           });
         }
       }
