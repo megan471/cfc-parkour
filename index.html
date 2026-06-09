@@ -1885,17 +1885,14 @@ function renderPayroll(){
     var co = COACHES[ck];
     var rate = COACH_RATES[ck] || 100;
     var shifts = (DB.shifts||[]).filter(function(s){
-      return s.coach === ck && !!s.date && inPayrollPeriod(s.date, yr, mo);
+      if(!s || !s.date) return false;
+      if(s.coach !== ck) return false;
+      return inPayrollPeriod(s.date, yr, mo);
     });
+    if(shifts.length) console.log(ck, 'has', shifts.length, 'shifts in period');
     var ps = (DB.personalSessions||[]).filter(function(s){
       return s.coach === ck && !!s.date && inPayrollPeriod(s.date, yr, mo);
     });
-    // Also count auto-generated claimed sessions
-    var autoSessions = getMonthSessions(yr, mo).filter(function(s){
-      var cl = getSessionClaim(s.id);
-      return cl && cl.coach === ck && inPayrollPeriod(s.date, yr, mo);
-    });
-    // Deduplicate — DB.shifts already stores claimed auto-sessions
     var groupCount = shifts.length;
     var personalCount = ps.length;
     var total = groupCount + personalCount;
@@ -1977,8 +1974,12 @@ function renderExpenses(){
   var payrollTotal=0;
   Object.keys(USERS).filter(function(k){return USERS[k].role==='coach';}).forEach(function(ck){
     var rate=COACH_RATES[ck]||100;
-    var sh=DB.shifts.filter(function(s){if(s.coach!==ck||!s.date)return false;return inPayrollPeriod(s.date,yr,mo);}).length;
-    var ps=(DB.personalSessions||[]).filter(function(s){if(s.coach!==ck||!s.date)return false;return inPayrollPeriod(s.date,yr,mo);}).length;
+    var sh=(DB.shifts||[]).filter(function(s){
+      return s && s.coach===ck && !!s.date && inPayrollPeriod(s.date,yr,mo);
+    }).length;
+    var ps=(DB.personalSessions||[]).filter(function(s){
+      return s && s.coach===ck && !!s.date && inPayrollPeriod(s.date,yr,mo);
+    }).length;
     payrollTotal+=(sh+ps)*rate;
   });
   var grand=fixedTotal+payrollTotal;
@@ -2105,17 +2106,15 @@ function getClaimedCoach(sessionId) {
   return shift ? shift.coach : null;
 }
 
-function claimSession(sessionId, pgId, day, date, startTime, endTime) {
-  if(!activeCoach) return;
-  // Remove any existing claim on this session first (by another coach)
-  var existing = DB.shifts.filter(function(s){ return s.id === sessionId; })[0];
-  if(existing) {
-    if(existing.coach === activeCoach) {
-      alert('You already have this shift!'); return;
-    }
-    alert('This shift was just claimed by '+coachName(existing.coach)+'!'); return;
+function claimSession(sessId){
+  var shift = (DB.shifts||[]).filter(function(s){ return s.id===sessId; })[0];
+  if(!shift){ alert('Session not found.'); return; }
+  if(shift.coach){ 
+    if(shift.coach===activeCoach){ alert('You already claimed this shift!'); return; }
+    alert('This shift was just claimed by '+coachName(shift.coach)+'!'); 
+    renderCoachPortal(); return; 
   }
-  DB.shifts.push({id:sessionId, coach:activeCoach, playgroup:pgId, day:day, date:date, startTime:startTime, endTime:endTime});
+  shift.coach = activeCoach;
   saveShifts();
   renderCoachPortal();
 }
