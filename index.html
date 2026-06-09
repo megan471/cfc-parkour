@@ -406,14 +406,16 @@ function saveAttendance(key, value) {
     fbSet('cfcParkour/attendance/'+safeKey(key), value);
   }
 }
-function saveShifts() {
-  // Convert array to object keyed by ID for reliable Firebase storage
+function saveShifts(){
+  // Save to Firebase as object keyed by ID
   var shiftsObj = {};
-  (DB.shifts||[]).forEach(function(s){ if(s&&s.id) shiftsObj[s.id] = s; });
-  console.log('saveShifts: saving', Object.keys(shiftsObj).length, 'shifts to Firebase');
+  (DB.shifts||[]).forEach(function(s){ if(s&&s.id) shiftsObj[s.id]=s; });
+  console.log('saveShifts: saving', Object.keys(shiftsObj).length, 'shifts');
   fbSet('cfcParkour/shifts', shiftsObj);
-  try{ localStorage.setItem('cfcShifts', JSON.stringify(DB.shifts||[])); }catch(e){}
+  // ALSO update localStorage so coaches see it immediately even before Firebase syncs
+  localSave();
 }
+
 function savePersonalSessions() { fbSet('cfcParkour/personalSessions', DB.personalSessions||[]); }
 function saveCorrectionLog() { fbSet('cfcParkour/correctionLog', DB.correctionLog||[]); }
 function saveCoachPins() { fbSet('cfcParkour/coachPins', DB.coachPins||{}); }
