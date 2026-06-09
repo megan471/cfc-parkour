@@ -1412,6 +1412,18 @@ function renderScheduleAdmin(){
       btn.addEventListener('click', function(){ filterAdminSessions(this.getAttribute('data-asf')); });
     });
 
+    // ── Wire clear all shifts ────────────────────────────────────────────
+    var clearBtn = document.getElementById('clearAllShiftsBtn');
+    if(clearBtn){
+      clearBtn.addEventListener('click', function(){
+        if(!confirm('Clear ALL released shifts? This cannot be undone.')) return;
+        DB.shifts = [];
+        saveShifts();
+        document.getElementById('adminSessionList').innerHTML = buildAdminSessionList('all');
+        alert('✅ All shifts cleared.');
+      });
+    }
+
     // ── Populate session list ────────────────────────────────────────────
     document.getElementById('adminSessionList').innerHTML = buildAdminSessionList('all');
     wireDeleteBtns();
