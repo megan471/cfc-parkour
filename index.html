@@ -510,7 +510,16 @@ function startRealtimeListeners() {
   });
   fbdb.ref('cfcParkour/shifts').on('value', function(snap){
     var v = snap.val();
-    if(v) DB.shifts = Array.isArray(v)?v:Object.values(v);
+    DB.shifts = v ? (Array.isArray(v)?v:Object.values(v)) : [];
+    // If coach portal is active, refresh it so new releases appear immediately
+    if(currentUser && currentUser.role==='coach' && currentTab==='coachPortal'){
+      renderCoachPortal();
+    }
+    // If admin is on special shifts, refresh the list too
+    if(currentUser && currentUser.role==='admin' && currentTab==='schedule'){
+      var el = document.getElementById('adminSessionList');
+      if(el){ el.innerHTML = buildAdminSessionList('all'); wireDeleteBtns(); }
+    }
   });
   fbdb.ref('cfcParkour/coachPins').on('value', function(snap){
     DB.coachPins = snap.val() || {};
