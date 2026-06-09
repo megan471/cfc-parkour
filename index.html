@@ -1497,6 +1497,19 @@ function buildAdminSessionList(filter){
 }
 
 
+function wireDeleteBtns(){
+  document.querySelectorAll('.del-shift-btn').forEach(function(b){
+    b.addEventListener('click', function(){
+      var did = this.getAttribute('data-did');
+      if(!confirm('Delete this shift?')) return;
+      DB.shifts = (DB.shifts||[]).filter(function(s){ return s.id !== did; });
+      saveShifts();
+      document.getElementById('adminSessionList').innerHTML = buildAdminSessionList('all');
+      wireDeleteBtns();
+    });
+  });
+}
+
 function filterAdminSessions(f){
   var el=document.getElementById('adminSessionList');
   if(el){ el.innerHTML=buildAdminSessionList(f); wireDeleteBtns(); }
