@@ -1984,7 +1984,7 @@ function renderExpenses(){
   var extrasTotal=extras.reduce(function(a,e){return a+Number(e.amount||0);},0);
   var fixedTotal=rent+video+jozi+Number(amanda)+Number(mike)+extrasTotal;
   var payrollTotal=0;
-  Object.keys(USERS).filter(function(k){return USERS[k].role==='coach';}).forEach(function(ck){
+  Object.keys(COACHES).forEach(function(ck){
     var rate=COACH_RATES[ck]||100;
     var sh=(DB.shifts||[]).filter(function(s){
       return s && s.coach===ck && !!s.date && inPayrollPeriod(s.date,yr,mo);
@@ -2001,7 +2001,7 @@ function renderExpenses(){
     +'<input type="month" class="form-input" value="'+selMonth+'" onchange="setExpenseMonth(this.value)"></div>'
     +'<div style="text-align:right"><div style="font-size:.78rem;color:var(--sub)">Total outgoings</div>'
     +'<div style="font-size:1.8rem;font-weight:900;color:var(--red)">R'+grand.toLocaleString()+'</div>'
-    +'<div style="font-size:.75rem;color:var(--sub)">'+monthName+'</div></div></div>'
+    +'<div style="font-size:.75rem;color:var(--sub)">'+monthName+'</div>'    +'<div style="font-size:.72rem;color:#2563eb;margin-top:2px;">📅 Payroll: '+payrollPeriodLabel(yr,mo)+'</div>'    +'</div></div>'
     +'<div style="font-size:.82rem;font-weight:700;color:var(--sub);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Fixed Costs</div>'
     +expRow('Rent','rent',rent,selMonth,'Adjustable')
     +expRow('Videography / Photography (Jared)','video',video,selMonth,'Adjustable')
