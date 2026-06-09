@@ -406,7 +406,14 @@ function saveAttendance(key, value) {
     fbSet('cfcParkour/attendance/'+safeKey(key), value);
   }
 }
-function saveShifts() { fbSet('cfcParkour/shifts', DB.shifts||[]); }
+function saveShifts() {
+  // Convert array to object keyed by ID for reliable Firebase storage
+  var shiftsObj = {};
+  (DB.shifts||[]).forEach(function(s){ if(s&&s.id) shiftsObj[s.id] = s; });
+  console.log('saveShifts: saving', Object.keys(shiftsObj).length, 'shifts to Firebase');
+  fbSet('cfcParkour/shifts', shiftsObj);
+  try{ localStorage.setItem('cfcShifts', JSON.stringify(DB.shifts||[])); }catch(e){}
+}
 function savePersonalSessions() { fbSet('cfcParkour/personalSessions', DB.personalSessions||[]); }
 function saveCorrectionLog() { fbSet('cfcParkour/correctionLog', DB.correctionLog||[]); }
 function saveCoachPins() { fbSet('cfcParkour/coachPins', DB.coachPins||{}); }
@@ -510,7 +517,14 @@ function startRealtimeListeners() {
   });
   fbdb.ref('cfcParkour/shifts').on('value', function(snap){
     var v = snap.val();
-    DB.shifts = v ? (Array.isArray(v)?v:Object.values(v)) : [];
+    if(v){
+      // Handle both object and array formats
+      var arr = Array.isArray(v) ? v : Object.values(v);
+      DB.shifts = arr.filter(function(s){ return s && s.id; });
+    } else {
+      DB.shifts = [];
+    }
+    console.log('Firebase shifts updated:', DB.shifts.length, 'shifts:', JSON.stringify(DB.shifts).substring(0,200));
     // If coach portal is active, refresh it so new releases appear immediately
     if(currentUser && currentUser.role==='coach' && currentTab==='coachPortal'){
       renderCoachPortal();
@@ -1309,174 +1323,186 @@ function savePin(k){
 function renderScheduleAdmin(){
   var mc = document.getElementById('mainContent');
   try {
-    var html = '<div class="card"><div class="card-title">📅 Special Shifts — Manage & Release</div>'
-      + '<div style="background:#eff6ff;border:1.5px solid #2563eb;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:.83rem;color:#1e40af;">'
-      + '📌 Select a playgroup below to see its regular timetable slots. Pick a date and release any slot to the coaches pool. You can also add a one-off custom shift.</div>';
+    // State
+    window._adminPG = null;
+    window._adminSlot = null;
 
-    // ── RELEASE FROM TIMETABLE ───────────────────────────────────────────
-    html += '<div style="margin-bottom:10px;"><label class="form-label">1. Select Playgroup</label>'
-      + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;" id="pgPickerBar">';
-    PLAYGROUPS.forEach(function(p){
-      if(p.id==='personal') return;
-      html += '<button class="btn pg-pick-btn" data-pg="'+p.id+'" style="background:'+p.color+'22;color:'+p.color+';border:1.5px solid '+p.color+'44;">'+p.emoji+' '+p.label+'</button>';
-    });
-    html += '</div></div>'
-      + '<div id="slotPickerArea" style="margin-bottom:16px;"></div>'
-      + '<div class="form-row"><label class="form-label">2. Date for this release <span style="color:var(--red);font-size:.78rem">★ Required</span></label>'
-      + '<input type="date" class="form-input" id="shDate" value="'+todayDate()+'"></div>'
-      + '<button class="btn btn-primary" style="width:100%;margin-bottom:20px;" id="releaseSlotBtn" disabled>🚀 Release Selected Slot to Coaches</button>'
+    var pgBtns = PLAYGROUPS.filter(function(p){return p.id!=='personal';}).map(function(p){
+      return '<button class="btn pg-pick-btn" data-pg="'+p.id+'" style="background:'+p.color+'22;color:'+p.color+';border:1.5px solid '+p.color+'44;margin:3px;">'+p.emoji+' '+p.label+'</button>';
+    }).join('');
 
-    // ── CUSTOM ONE-OFF SHIFT ─────────────────────────────────────────────
-      + '<div style="border-top:1px solid var(--border);padding-top:16px;margin-top:4px;">'
-      + '<div style="font-weight:700;font-size:.9rem;margin-bottom:12px;color:var(--sub);">➕ Add a Custom One-Off Shift</div>'
-      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">'
-      + '<div><label class="form-label">Playgroup</label>'
-      + '<select class="form-select" id="customPG"><option value="">-- Choose --</option>'
-      + PLAYGROUPS.filter(function(p){return p.id!=="personal";}).map(function(p){return '<option value="'+p.id+'">'+p.emoji+' '+p.label+'</option>';}).join('')
-      + '</select></div>'
-      + '<div><label class="form-label">Day</label>'
-      + '<select class="form-select" id="customDay">'
-      + '<option value="">-- Day --</option>'
-      + ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].map(function(d){return '<option>'+d+'</option>';}).join('')
-      + '</select></div>'
-      + '<div><label class="form-label">Start Time</label><input type="time" class="form-input" id="customStart"></div>'
-      + '<div><label class="form-label">End Time</label><input type="time" class="form-input" id="customEnd"></div>'
-      + '<div><label class="form-label">Date <span style="color:var(--red);font-size:.78rem">★</span></label>'
-      + '<input type="date" class="form-input" id="customDate" value="'+todayDate()+'"></div>'
-      + '</div>'
-      + '<button class="btn" style="background:#7c3aed;color:#fff;width:100%;" id="addCustomBtn">➕ Add Custom Shift</button>'
-      + '</div></div>'
+    var dayOpts = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].map(function(d){
+      return '<option value="'+d+'">'+d+'</option>';
+    }).join('');
 
-    // ── RELEASED SHIFTS LIST ─────────────────────────────────────────────
-      + '<div class="card"><div class="card-title" style="display:flex;align-items:center;justify-content:space-between;">'
-      + '<span>📋 Released Shifts</span>'
-      + '<span style="font-size:.78rem;color:var(--sub);font-weight:400;">Coaches can claim these</span></div>'
-      + '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;" id="adminFilterBar">'
-      + '<button class="btn btn-sm asf-btn" data-asf="all" style="background:#f1f5f9;">All</button>'
-      + '<button class="btn btn-sm asf-btn" data-asf="claimed" style="background:#dcfce7;color:#16a34a;">✓ Claimed</button>'
-      + '<button class="btn btn-sm asf-btn" data-asf="unclaimed" style="background:#fef3c7;color:#d97706;">⏳ Unclaimed</button>';
+    var pgOpts = PLAYGROUPS.filter(function(p){return p.id!=='personal';}).map(function(p){
+      return '<option value="'+p.id+'">'+p.emoji+' '+p.label+'</option>';
+    }).join('');
 
-    PLAYGROUPS.forEach(function(p){
-      if(p.id==='personal') return;
-      html += '<button class="btn btn-sm asf-btn" data-asf="'+p.id+'" style="background:'+p.color+'22;color:'+p.color+';">'+p.emoji+' '+p.label+'</button>';
-    });
+    mc.innerHTML = ''
+      +'<div class="card">'
+      +'<div class="card-title">📅 Release Shifts to Coaches</div>'
+      +'<div style="background:#eff6ff;border:1.5px solid #2563eb;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:.83rem;color:#1e40af;">Pick a playgroup → pick a slot → pick a date → Release</div>'
 
-    html += '</div><div id="adminSessionList">Loading...</div></div>';
+      // Step 1 - PG picker
+      +'<div class="form-row"><label class="form-label">1. Playgroup</label>'
+      +'<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;">'+pgBtns+'</div></div>'
 
-    mc.innerHTML = html;
+      // Step 2 - Slot picker (populated after pg selected)
+      +'<div class="form-row" id="slotPickerArea" style="display:none;">'
+      +'<label class="form-label">2. Select Time Slot</label>'
+      +'<div id="slotBtns" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;"></div>'
+      +'</div>'
 
-    // ── Wire playgroup picker ────────────────────────────────────────────
-    var selectedPG = null;
-    var selectedSlot = null;
+      // Step 3 - Date
+      +'<div class="form-row" id="dateRow" style="display:none;">'
+      +'<label class="form-label">3. Date <span style="color:var(--red);">★ Required</span></label>'
+      +'<input type="date" class="form-input" id="shDate" value="'+todayDate()+'">'
+      +'</div>'
 
+      // Release button
+      +'<button class="btn btn-primary" id="releaseSlotBtn" style="width:100%;display:none;">🚀 Release to Coaches Pool</button>'
+
+      // Divider - custom shift
+      +'<div style="border-top:1px solid var(--border);margin:20px 0;padding-top:16px;">'
+      +'<div style="font-weight:700;font-size:.9rem;margin-bottom:12px;">➕ Custom One-Off Shift</div>'
+      +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">'
+      +'<div><label class="form-label">Playgroup</label><select class="form-select" id="customPG"><option value="">-- Choose --</option>'+pgOpts+'</select></div>'
+      +'<div><label class="form-label">Day</label><select class="form-select" id="customDay"><option value="">-- Day --</option>'+dayOpts+'</select></div>'
+      +'<div><label class="form-label">Start</label><input type="time" class="form-input" id="customStart"></div>'
+      +'<div><label class="form-label">End</label><input type="time" class="form-input" id="customEnd"></div>'
+      +'<div><label class="form-label">Date ★</label><input type="date" class="form-input" id="customDate" value="'+todayDate()+'"></div>'
+      +'</div>'
+      +'<button class="btn" style="background:#7c3aed;color:#fff;width:100%;margin-top:10px;" id="addCustomBtn">➕ Add Custom Shift</button>'
+      +'</div></div>'
+
+      // Released shifts list
+      +'<div class="card">'
+      +'<div class="card-title" style="display:flex;align-items:center;justify-content:space-between;">'
+      +'<span>📋 Released Shifts</span>'
+      +'<button id="clearAllShiftsBtn" style="background:#fee2e2;color:#dc2626;border:none;padding:4px 12px;border-radius:6px;font-size:.78rem;font-weight:700;cursor:pointer;">🗑 Clear All</button>'
+      +'</div>'
+      +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">'
+      +'<button class="btn btn-sm asf-btn" data-asf="all" style="background:#f1f5f9;">All</button>'
+      +'<button class="btn btn-sm asf-btn" data-asf="claimed" style="background:#dcfce7;color:#16a34a;">✓ Claimed</button>'
+      +'<button class="btn btn-sm asf-btn" data-asf="unclaimed" style="background:#fef3c7;color:#d97706;">⏳ Unclaimed</button>'
+      +PLAYGROUPS.filter(function(p){return p.id!=='personal';}).map(function(p){
+        return '<button class="btn btn-sm asf-btn" data-asf="'+p.id+'" style="background:'+p.color+'22;color:'+p.color+';">'+p.emoji+' '+p.label+'</button>';
+      }).join('')
+      +'</div>'
+      +'<div id="adminSessionList">'+buildAdminSessionList('all')+'</div>'
+      +'</div>';
+
+    // Wire PG picker
     document.querySelectorAll('.pg-pick-btn').forEach(function(btn){
       btn.addEventListener('click', function(){
-        selectedPG = this.getAttribute('data-pg');
-        selectedSlot = null;
-        document.querySelectorAll('.pg-pick-btn').forEach(function(b){ b.style.fontWeight='400'; b.style.borderWidth='1.5px'; });
-        this.style.fontWeight = '800';
-        this.style.borderWidth = '2.5px';
-        document.getElementById('releaseSlotBtn').disabled = true;
-        renderSlotPicker(selectedPG);
+        window._adminPG = this.getAttribute('data-pg');
+        window._adminSlot = null;
+        document.querySelectorAll('.pg-pick-btn').forEach(function(b){b.style.fontWeight='400';b.style.opacity='0.7';});
+        this.style.fontWeight='800'; this.style.opacity='1';
+        // Show slots
+        var slots = ALL_SLOTS[window._adminPG]||[];
+        var pg = getPG(window._adminPG);
+        var btnsHtml = slots.filter(function(s){return s.start;}).map(function(s,i){
+          return '<button class="btn slot-btn" data-i="'+i+'" data-day="'+s.day+'" data-start="'+s.start+'" data-end="'+s.end+'" '
+            +'style="background:var(--card);border:1.5px solid var(--border);padding:8px 12px;text-align:left;">'
+            +'<div style="font-weight:700;font-size:.85rem;">'+s.day+'</div>'
+            +'<div style="font-size:.78rem;color:var(--sub);">'+s.start+'–'+s.end+'</div>'
+            +'</button>';
+        }).join('');
+        document.getElementById('slotBtns').innerHTML = btnsHtml;
+        document.getElementById('slotPickerArea').style.display='block';
+        document.getElementById('dateRow').style.display='none';
+        document.getElementById('releaseSlotBtn').style.display='none';
+
+        // Wire slot buttons
+        document.querySelectorAll('.slot-btn').forEach(function(sb){
+          sb.addEventListener('click', function(){
+            document.querySelectorAll('.slot-btn').forEach(function(b){b.style.background='var(--card)';b.style.borderColor='var(--border)';});
+            this.style.background = pg?pg.color+'33':'#2563eb22';
+            this.style.borderColor = pg?pg.color:'#2563eb';
+            window._adminSlot = {
+              day: this.getAttribute('data-day'),
+              start: this.getAttribute('data-start'),
+              end: this.getAttribute('data-end')
+            };
+            document.getElementById('dateRow').style.display='block';
+            document.getElementById('releaseSlotBtn').style.display='block';
+          });
+        });
       });
     });
 
-    // ── Wire release button ──────────────────────────────────────────────
+    // Wire release button
     document.getElementById('releaseSlotBtn').addEventListener('click', function(){
-      selectedSlot = window._selectedSlot; if(!selectedSlot || !selectedPG) return;
+      var pg = window._adminPG;
+      var slot = window._adminSlot;
       var date = document.getElementById('shDate').value;
-      if(!date){ alert('Please pick a date.'); return; }
-      var id = uid();
-      DB.shifts = DB.shifts || [];
-      DB.shifts.push({id:id, coach:null, playgroup:selectedPG, day:selectedSlot.day,
-        date:date, startTime:selectedSlot.start, endTime:selectedSlot.end, special:true});
+      if(!pg){alert('Select a playgroup first.');return;}
+      if(!slot){alert('Select a time slot first.');return;}
+      if(!date){alert('Please pick a date.');return;}
+      var newShift = {
+        id: uid(),
+        coach: null,
+        playgroup: pg,
+        day: slot.day,
+        date: date,
+        startTime: slot.start,
+        endTime: slot.end,
+        special: true
+      };
+      DB.shifts = DB.shifts||[];
+      DB.shifts.push(newShift);
       saveShifts();
-      alert('✅ Shift released to coaches pool!');
       document.getElementById('adminSessionList').innerHTML = buildAdminSessionList('all');
       wireDeleteBtns();
-      // Reset slot selection
-      document.querySelectorAll('.slot-pick-btn').forEach(function(b){ b.classList.remove('selected'); b.style.background=''; b.style.color=''; });
-      selectedSlot = null;
-      document.getElementById('releaseSlotBtn').disabled = true;
+      // Reset
+      window._adminSlot = null;
+      document.querySelectorAll('.slot-btn').forEach(function(b){b.style.background='var(--card)';b.style.borderColor='var(--border)';});
+      document.getElementById('releaseSlotBtn').style.display='none';
+      document.getElementById('dateRow').style.display='none';
+      alert('✅ Shift released! Coaches can now claim it.');
     });
 
-    // ── Wire custom shift button ─────────────────────────────────────────
+    // Wire custom shift
     document.getElementById('addCustomBtn').addEventListener('click', function(){
-      var pgId = document.getElementById('customPG').value;
-      var day  = document.getElementById('customDay').value;
-      var st   = document.getElementById('customStart').value;
-      var et   = document.getElementById('customEnd').value;
-      var dt   = document.getElementById('customDate').value;
-      if(!pgId||!day||!st||!et||!dt){ alert('Please fill in all fields for the custom shift.'); return; }
-      DB.shifts = DB.shifts || [];
-      DB.shifts.push({id:uid(), coach:null, playgroup:pgId, day:day, date:dt, startTime:st, endTime:et, special:true});
+      var pgId=document.getElementById('customPG').value;
+      var day=document.getElementById('customDay').value;
+      var st=document.getElementById('customStart').value;
+      var et=document.getElementById('customEnd').value;
+      var dt=document.getElementById('customDate').value;
+      if(!pgId||!day||!st||!et||!dt){alert('Please fill in all fields.');return;}
+      DB.shifts=DB.shifts||[];
+      DB.shifts.push({id:uid(),coach:null,playgroup:pgId,day:day,date:dt,startTime:st,endTime:et,special:true});
       saveShifts();
-      alert('✅ Custom shift added to coaches pool!');
-      document.getElementById('adminSessionList').innerHTML = buildAdminSessionList('all');
+      document.getElementById('adminSessionList').innerHTML=buildAdminSessionList('all');
       wireDeleteBtns();
+      alert('✅ Custom shift added!');
     });
 
-    // ── Wire filter buttons ──────────────────────────────────────────────
+    // Wire clear all
+    document.getElementById('clearAllShiftsBtn').addEventListener('click', function(){
+      if(!confirm('Clear ALL released shifts?')) return;
+      DB.shifts=[];
+      saveShifts();
+      document.getElementById('adminSessionList').innerHTML=buildAdminSessionList('all');
+      alert('✅ All shifts cleared.');
+    });
+
+    // Wire filter buttons
     document.querySelectorAll('.asf-btn').forEach(function(btn){
-      btn.addEventListener('click', function(){ filterAdminSessions(this.getAttribute('data-asf')); });
+      btn.addEventListener('click',function(){filterAdminSessions(this.getAttribute('data-asf'));});
     });
 
-    // ── Wire clear all shifts ────────────────────────────────────────────
-    var clearBtn = document.getElementById('clearAllShiftsBtn');
-    if(clearBtn){
-      clearBtn.addEventListener('click', function(){
-        if(!confirm('Clear ALL released shifts? This cannot be undone.')) return;
-        DB.shifts = [];
-        saveShifts();
-        document.getElementById('adminSessionList').innerHTML = buildAdminSessionList('all');
-        alert('✅ All shifts cleared.');
-      });
-    }
-
-    // ── Populate session list ────────────────────────────────────────────
-    document.getElementById('adminSessionList').innerHTML = buildAdminSessionList('all');
+    // Wire delete buttons
     wireDeleteBtns();
 
-  } catch(err) {
-    mc.innerHTML = '<div class="card"><div style="color:#dc2626;padding:14px;">Error: '+err.message+'<br><small>'+err.stack+'</small></div></div>';
-    console.error('renderScheduleAdmin error:', err);
+  } catch(err){
+    mc.innerHTML='<div class="card"><div style="color:#dc2626;padding:14px;">Error: '+err.message+'</div></div>';
+    console.error(err);
   }
 }
 
-function renderSlotPicker(pgId){
-  var area = document.getElementById('slotPickerArea');
-  var slots = ALL_SLOTS[pgId] || [];
-  var pg = getPG(pgId);
-  if(!slots.length){ area.innerHTML='<div style="color:var(--sub);font-size:.85rem;">No timetable slots for this group.</div>'; return; }
-  var html = '<label class="form-label">2. Select Slot</label>'
-    + '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;margin-top:6px;">';
-  slots.forEach(function(slot, i){
-    if(!slot.start) return;
-    html += '<button class="btn slot-pick-btn" data-idx="'+i+'" style="background:var(--card);border:1.5px solid var(--border);text-align:left;padding:10px 12px;">'
-      + '<div style="font-weight:700;font-size:.85rem;">'+slot.day+'</div>'
-      + '<div style="font-size:.78rem;color:var(--sub);">'+slot.start+'–'+slot.end+'</div>'
-      + '</button>';
-  });
-  html += '</div>';
-  area.innerHTML = html;
-
-  var pgSlots = slots;
-  document.querySelectorAll('.slot-pick-btn').forEach(function(btn){
-    btn.addEventListener('click', function(){
-      document.querySelectorAll('.slot-pick-btn').forEach(function(b){
-        b.style.background='var(--card)'; b.style.borderColor='var(--border)'; b.style.color='';
-      });
-      this.style.background = pg ? pg.color+'33' : '#2563eb22';
-      this.style.borderColor = pg ? pg.color : '#2563eb';
-      this.style.color = pg ? pg.color : '#2563eb';
-      window._selectedSlot = pgSlots[parseInt(this.getAttribute('data-idx'))];
-      // Update outer var via closure won't work, use window
-      document.getElementById('releaseSlotBtn').disabled = false;
-    });
-  });
-  // Expose selectedSlot via event for the release button
-  area._getSlot = function(){ return window._selectedSlot; };
-}
 
 
 function buildAdminSessionList(filter){
@@ -2106,12 +2132,14 @@ function getSessionMonth() {
 
 // ─── COACH PORTAL ────────────────────────────────────────────────────────────
 function getUpcomingSessions(){
-  // Only return shifts Amanda has explicitly released (in DB.shifts)
-  // NOT the full auto-generated timetable
   var today = todayDate();
-  return (DB.shifts||[]).filter(function(s){
+  var all = DB.shifts||[];
+  console.log('getUpcomingSessions: DB.shifts has', all.length, 'entries, today=', today);
+  var result = all.filter(function(s){
     return !s.coach && s.date && s.date >= today;
   }).sort(function(a,b){ return a.date.localeCompare(b.date); });
+  console.log('getUpcomingSessions: returning', result.length, 'available sessions');
+  return result;
 }
 
 
@@ -2122,6 +2150,8 @@ function getSessionClaim(sessId){
 
 function renderCoachPortal(){
   var mc=document.getElementById('mainContent');
+  // Always show latest from DB
+  console.log('renderCoachPortal: DB.shifts=', DB.shifts.length, 'activeCoach=', activeCoach);
   if(!activeCoach){
     var html='<div class="today-header"><div class="today-date">🏃 Coaches Portal</div>'
       +'<div class="today-sub">'+todayFull()+' — Select your name to continue</div></div>'
