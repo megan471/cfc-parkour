@@ -1908,6 +1908,12 @@ function renderPayroll(){
     return {ck:ck,co:co,rate:rate,groupCount:groupCount,personalCount:personalCount,total:total,pay:pay,hrs:hrs};
   });
 
+  // Debug: show raw shifts
+  var allShifts = DB.shifts||[];
+  var claimedShifts = allShifts.filter(function(s){return !!s.coach;});
+  console.log('Payroll debug - all shifts:', allShifts.length, 'claimed:', claimedShifts.length);
+  claimedShifts.forEach(function(s){ console.log('  shift:', s.id, 'coach:', s.coach, 'date:', s.date, 'inPeriod:', inPayrollPeriod(s.date, yr, mo)); });
+
   var html = '<div class="card"><div class="card-title">💰 Monthly Payroll</div>'
     + '<div style="background:#eff6ff;border:1.5px solid #2563eb;border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:.83rem;color:#1e40af">'
     + '📅 Pay period: <strong>'+periodLabel+'</strong> (26th–25th cycle)</div>'
@@ -1939,7 +1945,13 @@ function renderPayroll(){
   // Show message if no shifts at all
   var anyShifts = coachRows.some(function(r){return r.total>0;});
   if(!anyShifts){
-    html += '<div style="text-align:center;padding:20px;color:var(--sub);">No claimed shifts found for this pay period.</div>';
+    var allS = DB.shifts||[];
+    var claimedS = allS.filter(function(s){return !!s.coach;});
+    html += '<div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;padding:14px;margin-bottom:10px;">'
+      + '<div style="font-weight:700;margin-bottom:8px;">⚠️ No shifts found for this pay period</div>'
+      + '<div style="font-size:.83rem;color:#78350f;">Total shifts in DB: '+allS.length+' | Claimed: '+claimedS.length+'</div>'
+      + (claimedS.length ? '<div style="font-size:.78rem;margin-top:8px;font-family:monospace;">'+claimedS.map(function(s){return s.coach+' / '+s.date+' / '+s.playgroup;}).join('<br>')+'</div>' : '')
+      + '</div>';
   }
 
   // Export button
