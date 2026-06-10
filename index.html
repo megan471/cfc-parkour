@@ -1407,12 +1407,9 @@ function renderScheduleAdmin(){
         var slots = ALL_SLOTS[window._adminPG]||[];
         var pg = getPG(window._adminPG);
 
-        // Personal Classes and Events: no fixed slots — show direct time entry
-        if(window._adminPG === 'personal' || window._adminPG === 'events'){
-          var extraFields = window._adminPG === 'events'
-            ? '<div class="form-row" style="margin-top:10px;"><label class="form-label">Event Description</label>'
-              + '<input type="text" class="form-input" id="eventDesc" placeholder="e.g. Birthday party, School demo, Competition..."></div>'
-            : '';
+        // Personal Classes: direct time entry, release to pool
+        // Events: direct assignment to multiple coaches with custom rate
+        if(window._adminPG === 'personal'){
           document.getElementById('slotBtns').innerHTML =
             '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px;">'
             + '<div><label class="form-label">Day</label>'
@@ -1421,7 +1418,7 @@ function renderScheduleAdmin(){
             + '</select></div>'
             + '<div><label class="form-label">Start Time</label><input type="time" class="form-input" id="quickStart"></div>'
             + '<div><label class="form-label">End Time</label><input type="time" class="form-input" id="quickEnd"></div>'
-            + '</div>' + extraFields
+            + '</div>'
             + '<button class="btn" style="background:'+pg.color+';color:#fff;margin-top:10px;width:100%;" id="quickSlotConfirm">✓ Use This Time</button>';
           document.getElementById('slotPickerArea').style.display='block';
           document.getElementById('dateRow').style.display='none';
@@ -1430,12 +1427,89 @@ function renderScheduleAdmin(){
             var d = document.getElementById('quickDay').value;
             var s = document.getElementById('quickStart').value;
             var e = document.getElementById('quickEnd').value;
-            var desc = document.getElementById('eventDesc') ? document.getElementById('eventDesc').value : '';
             if(!s||!e){alert('Please enter start and end time.');return;}
-            window._adminSlot = {day:d, start:s, end:e, description:desc};
+            window._adminSlot = {day:d, start:s, end:e};
             document.getElementById('dateRow').style.display='block';
             document.getElementById('releaseSlotBtn').style.display='block';
           });
+
+        } else if(window._adminPG === 'events'){
+          // Build coach checkboxes
+          var coachCheckboxes = Object.keys(COACHES).map(function(ck){
+            return '<label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;cursor:pointer;background:var(--card);">'
+              + '<input type="checkbox" value="'+ck+'" class="evt-coach-chk" style="width:16px;height:16px;cursor:pointer;">'
+              + '<div style="width:28px;height:28px;border-radius:50%;background:'+COACHES[ck].color+';display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;font-size:.85rem;flex-shrink:0;">'+COACHES[ck].name[0]+'</div>'
+              + '<span style="font-weight:600;">'+COACHES[ck].name+'</span>'
+              + '</label>';
+          }).join('');
+
+          document.getElementById('slotBtns').innerHTML =
+            '<div style="margin-bottom:12px;">'
+            + '<label class="form-label">Event Description</label>'
+            + '<input type="text" class="form-input" id="eventDesc" placeholder="e.g. Birthday party, School demo, Competition...">'
+            + '</div>'
+            + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">'
+            + '<div><label class="form-label">Day</label>'
+            + '<select class="form-select" id="quickDay">'
+            + ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].map(function(d){return '<option>'+d+'</option>';}).join('')
+            + '</select></div>'
+            + '<div><label class="form-label">Date</label><input type="date" class="form-input" id="quickDate" value="'+todayDate()+'"></div>'
+            + '<div><label class="form-label">Start Time</label><input type="time" class="form-input" id="quickStart"></div>'
+            + '<div><label class="form-label">End Time</label><input type="time" class="form-input" id="quickEnd"></div>'
+            + '</div>'
+            + '<div class="form-row">'
+            + '<label class="form-label">Pay Rate per Coach (R) for this event</label>'
+            + '<input type="number" class="form-input" id="eventRate" value="100" min="0" style="max-width:160px;">'
+            + '</div>'
+            + '<div class="form-row">'
+            + '<label class="form-label">Select Coaches Who Attended</label>'
+            + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;">'+coachCheckboxes+'</div>'
+            + '</div>'
+            + '<button class="btn" style="background:#db2777;color:#fff;margin-top:12px;width:100%;" id="saveEventBtn">🎉 Save Event & Assign Coaches</button>';
+
+          document.getElementById('slotPickerArea').style.display='block';
+          document.getElementById('dateRow').style.display='none';
+          document.getElementById('releaseSlotBtn').style.display='none';
+
+          document.getElementById('saveEventBtn').addEventListener('click', function(){
+            var desc = document.getElementById('eventDesc').value.trim();
+            var day  = document.getElementById('quickDay').value;
+            var date = document.getElementById('quickDate').value;
+            var st   = document.getElementById('quickStart').value;
+            var et   = document.getElementById('quickEnd').value;
+            var rate = parseInt(document.getElementById('eventRate').value)||100;
+            var selected = [];
+            document.querySelectorAll('.evt-coach-chk:checked').forEach(function(cb){ selected.push(cb.value); });
+            if(!desc){alert('Please enter an event description.');return;}
+            if(!st||!et){alert('Please enter start and end time.');return;}
+            if(!date){alert('Please pick a date.');return;}
+            if(!selected.length){alert('Please select at least one coach.');return;}
+            // Create one shift per selected coach, already claimed, with custom rate
+            DB.shifts = DB.shifts||[];
+            selected.forEach(function(ck){
+              DB.shifts.push({
+                id: uid(),
+                coach: ck,
+                playgroup: 'events',
+                day: day,
+                date: date,
+                startTime: st,
+                endTime: et,
+                special: true,
+                description: desc,
+                eventRate: rate
+              });
+            });
+            saveShifts();
+            document.getElementById('adminSessionList').innerHTML = buildAdminSessionList('all');
+            wireDeleteBtns();
+            alert('✅ Event saved! '+selected.length+' coach'+(selected.length>1?'es':'')+" assigned at R"+rate+" each.");
+            // Reset
+            document.getElementById('slotPickerArea').style.display='none';
+            window._adminPG = null;
+            document.querySelectorAll('.pg-pick-btn').forEach(function(b){b.style.fontWeight='400';b.style.opacity='0.7';});
+          });
+
         } else {
           var btnsHtml = slots.filter(function(s){return s.start;}).map(function(s,i){
             return '<button class="btn slot-btn" data-i="'+i+'" data-day="'+s.day+'" data-start="'+s.start+'" data-end="'+s.end+'" '
@@ -1561,8 +1635,10 @@ function buildAdminSessionList(filter){
   shifts.forEach(function(s){
     var pg = getPG(s.playgroup);
     var cl = s.coach ? COACHES[s.coach] : null;
+    var cl = s.coach ? COACHES[s.coach] : null;
+    var rateLabel = (s.eventRate !== undefined) ? ' · R'+s.eventRate : '';
     var badge = cl
-      ? '<span style="background:'+cl.color+'22;color:'+cl.color+';padding:2px 8px;border-radius:20px;font-size:.72rem;font-weight:700;">✓ '+cl.name+'</span>'
+      ? '<span style="background:'+cl.color+'22;color:'+cl.color+';padding:2px 8px;border-radius:20px;font-size:.72rem;font-weight:700;">✓ '+cl.name+rateLabel+'</span>'
       : '<span style="background:#fef3c7;color:#d97706;padding:2px 8px;border-radius:20px;font-size:.72rem;font-weight:700;">⏳ Unclaimed</span>';
 
     var pgLabel = pg ? pg.emoji+' '+pg.label : s.playgroup;
@@ -1932,7 +2008,11 @@ function renderPayroll(){
     var groupCount = shifts.length;
     var personalCount = ps.length;
     var total = groupCount + personalCount;
-    var pay = total * rate;
+    // Use custom eventRate for event shifts if set
+    var pay = shifts.reduce(function(acc,s){
+      return acc + (s.eventRate !== undefined ? s.eventRate : rate);
+    },0) + (personalCount * rate);
+    var total2 = shifts.length + personalCount;
     grandTotal += pay;
     // Hours
     var hrs = shifts.reduce(function(acc,s){
@@ -2022,13 +2102,16 @@ function renderExpenses(){
   var payrollTotal=0;
   Object.keys(COACHES).forEach(function(ck){
     var rate=COACH_RATES[ck]||100;
-    var sh=(DB.shifts||[]).filter(function(s){
+    var coachShifts=(DB.shifts||[]).filter(function(s){
       return s && s.coach===ck && !!s.date && inPayrollPeriod(s.date,yr,mo);
-    }).length;
+    });
     var ps=(DB.personalSessions||[]).filter(function(s){
       return s && s.coach===ck && !!s.date && inPayrollPeriod(s.date,yr,mo);
     }).length;
-    payrollTotal+=(sh+ps)*rate;
+    var shiftPay = coachShifts.reduce(function(acc,s){
+      return acc + (s.eventRate !== undefined ? s.eventRate : rate);
+    },0);
+    payrollTotal += shiftPay + (ps*rate);
   });
   var grand=fixedTotal+payrollTotal;
   var html='<div class="card"><div class="card-title">🏦 Monthly Business Expenses</div>'
