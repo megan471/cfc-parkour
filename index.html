@@ -1420,6 +1420,11 @@ function renderScheduleAdmin(){
         if(window._adminPG === 'personal'){
           document.getElementById('slotBtns').innerHTML =
             '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px;">'
+            + '<div><label class="form-label">Coach</label>'
+            + '<select class="form-select" id="personalCoach">'
+            + '<option value="">-- Select Coach --</option>'
+            + Object.keys(COACHES).map(function(ck){return '<option value="'+ck+'">'+COACHES[ck].name+'</option>';}).join('')
+            + '</select></div>'
             + '<div><label class="form-label">Day</label>'
             + '<select class="form-select" id="quickDay">'
             + ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].map(function(d){return '<option>'+d+'</option>';}).join('')
@@ -1427,19 +1432,23 @@ function renderScheduleAdmin(){
             + '<div><label class="form-label">Start Time</label><input type="time" class="form-input" id="quickStart"></div>'
             + '<div><label class="form-label">End Time</label><input type="time" class="form-input" id="quickEnd"></div>'
             + '</div>'
-            + '<button class="btn" style="background:'+pg.color+';color:#fff;margin-top:10px;width:100%;" id="quickSlotConfirm">✓ Use This Time</button>';
+            + '<button class="btn" style="background:'+pg.color+';color:#fff;margin-top:10px;width:100%;" id="quickSlotConfirm">✓ Confirm</button>';
           document.getElementById('slotPickerArea').style.display='block';
           document.getElementById('dateRow').style.display='none';
           document.getElementById('releaseSlotBtn').style.display='none';
           document.getElementById('quickSlotConfirm').addEventListener('click', function(){
+            var coach = document.getElementById('personalCoach').value;
             var d = document.getElementById('quickDay').value;
             var s = document.getElementById('quickStart').value;
             var e = document.getElementById('quickEnd').value;
+            if(!coach){alert('Please select a coach.');return;}
             if(!s||!e){alert('Please enter start and end time.');return;}
-            window._adminSlot = {day:d, start:s, end:e};
+            window._adminSlot = {day:d, start:s, end:e, personalCoach:coach};
             document.getElementById('dateRow').style.display='block';
             document.getElementById('releaseSlotBtn').style.display='block';
+            document.getElementById('releaseSlotBtn').textContent = '🚀 Assign to ' + COACHES[coach].name;
           });
+
 
         } else if(window._adminPG === 'events'){
           // Build coach checkboxes
@@ -1565,7 +1574,7 @@ function renderScheduleAdmin(){
       if(!date){alert('Please pick a date.');return;}
       var newShift = {
         id: uid(),
-        coach: null,
+        coach: slot.personalCoach || null,
         playgroup: pg,
         day: slot.day,
         date: date,
