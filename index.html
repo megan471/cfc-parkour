@@ -263,12 +263,7 @@ var ALL_SLOTS = {
     {day:'Saturday',start:'11:00',end:'12:00',label:'11:00am - 12:00pm'},
     {day:'Sunday',start:'11:00',end:'12:00',label:'11:00am - 12:00pm'}
   ],
-  personal:[
-    {day:'Monday',start:'',end:'',label:'Manual'},{day:'Tuesday',start:'',end:'',label:'Manual'},
-    {day:'Wednesday',start:'',end:'',label:'Manual'},{day:'Thursday',start:'',end:'',label:'Manual'},
-    {day:'Friday',start:'',end:'',label:'Manual'},{day:'Saturday',start:'',end:'',label:'Manual'},
-    {day:'Sunday',start:'',end:'',label:'Manual'}
-  ]
+  personal: []
 };
 var PG_DAYS = {
   aisj:['Monday','Tuesday','Wednesday','Friday'],
@@ -1556,6 +1551,20 @@ function renderScheduleAdmin(){
                 start: this.getAttribute('data-start'),
                 end: this.getAttribute('data-end')
               };
+              // Show coach picker below slot buttons
+              var coachPickHtml = '<div style="margin-top:10px;padding:10px;background:#f8fafc;border-radius:8px;border:1px solid var(--border);">'
+                + '<label class="form-label">Assign to a specific coach? (optional — leave blank to release to all)</label>'
+                + '<select class="form-select" id="slotCoach" style="margin-top:4px;">'
+                + '<option value="">🔓 Release to all coaches</option>'
+                + Object.keys(COACHES).map(function(ck){return '<option value="'+ck+'">'+COACHES[ck].name+'</option>';}).join('')
+                + '</select></div>';
+              var existing = document.getElementById('slotCoachPicker');
+              if(!existing){
+                var div = document.createElement('div');
+                div.id = 'slotCoachPicker';
+                div.innerHTML = coachPickHtml;
+                document.getElementById('slotPickerArea').appendChild(div);
+              }
               document.getElementById('dateRow').style.display='block';
               document.getElementById('releaseSlotBtn').style.display='block';
             });
@@ -1572,9 +1581,11 @@ function renderScheduleAdmin(){
       if(!pg){alert('Select a playgroup first.');return;}
       if(!slot){alert('Select a time slot first.');return;}
       if(!date){alert('Please pick a date.');return;}
+      var slotCoachEl = document.getElementById('slotCoach');
+      var assignedCoach = slot.personalCoach || (slotCoachEl ? slotCoachEl.value || null : null);
       var newShift = {
         id: uid(),
-        coach: slot.personalCoach || null,
+        coach: assignedCoach,
         playgroup: pg,
         day: slot.day,
         date: date,
