@@ -328,7 +328,8 @@ var DB = {
   coachPins: {},
   expenses: {},
   payrollMonth: '',
-  expenseMonth: ''
+  expenseMonth: '',
+  payrollAddl: {}
 };
 var _fbLoaded = false;
 
@@ -371,7 +372,8 @@ function localSave(){
       students:DB.students,attendance:DB.attendance,shifts:DB.shifts,
       personalSessions:DB.personalSessions,correctionLog:DB.correctionLog,
       coachPins:DB.coachPins,expenses:DB.expenses,
-      payrollMonth:DB.payrollMonth,expenseMonth:DB.expenseMonth
+      payrollMonth:DB.payrollMonth,expenseMonth:DB.expenseMonth,
+      payrollAddl:DB.payrollAddl||{}
     };
     localStorage.setItem('cfcParkourDB3',JSON.stringify(snap));
   }catch(e){}
@@ -518,6 +520,12 @@ function startRealtimeListeners() {
   fbdb.ref('cfcParkour/attendance').on('value', function(snap){
     DB.attendance = snap.val() || {};
   });
+  fbdb.ref('cfcParkour/payrollAddl').on('value', function(snap){
+    var v = snap.val();
+    DB.payrollAddl = v||{};
+    if(currentUser && currentUser.role==='admin' && currentTab==='payroll') renderPayroll();
+  });
+
   fbdb.ref('cfcParkour/shifts').on('value', function(snap){
     var v = snap.val();
     if(v){
@@ -1436,11 +1444,16 @@ function renderScheduleAdmin(){
         } else if(window._adminPG === 'events'){
           // Build coach checkboxes
           var coachCheckboxes = Object.keys(COACHES).map(function(ck){
-            return '<label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;cursor:pointer;background:var(--card);">'
-              + '<input type="checkbox" value="'+ck+'" class="evt-coach-chk" style="width:16px;height:16px;cursor:pointer;">'
+            var defaultRate = COACH_RATES[ck]||100;
+            return '<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;background:var(--card);">'
+              + '<input type="checkbox" value="'+ck+'" class="evt-coach-chk" id="chk_'+ck+'" style="width:16px;height:16px;cursor:pointer;flex-shrink:0;">'
               + '<div style="width:28px;height:28px;border-radius:50%;background:'+COACHES[ck].color+';display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;font-size:.85rem;flex-shrink:0;">'+COACHES[ck].name[0]+'</div>'
-              + '<span style="font-weight:600;">'+COACHES[ck].name+'</span>'
-              + '</label>';
+              + '<label for="chk_'+ck+'" style="font-weight:600;flex:1;cursor:pointer;">'+COACHES[ck].name+'</label>'
+              + '<div style="display:flex;align-items:center;gap:4px;flex-shrink:0;">'
+              + '<span style="font-size:.78rem;color:var(--sub);">R</span>'
+              + '<input type="number" class="evt-coach-rate" data-ck="'+ck+'" value="'+defaultRate+'" min="0" style="width:70px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;font-size:.85rem;font-weight:700;background:var(--card);color:var(--text);">'
+              + '</div>'
+              + '</div>';
           }).join('');
 
           document.getElementById('slotBtns').innerHTML =
@@ -1457,9 +1470,8 @@ function renderScheduleAdmin(){
             + '<div><label class="form-label">Start Time</label><input type="time" class="form-input" id="quickStart"></div>'
             + '<div><label class="form-label">End Time</label><input type="time" class="form-input" id="quickEnd"></div>'
             + '</div>'
-            + '<div class="form-row">'
-            + '<label class="form-label">Pay Rate per Coach (R) for this event</label>'
-            + '<input type="number" class="form-input" id="eventRate" value="100" min="0" style="max-width:160px;">'
+            + '<div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:.82rem;color:#92400e;">'
+            + '💡 Rates default to each coach&#39;s standard rate. Adjust per coach as needed.'
             + '</div>'
             + '<div class="form-row">'
             + '<label class="form-label">Select Coaches Who Attended</label>'
@@ -1477,16 +1489,17 @@ function renderScheduleAdmin(){
             var date = document.getElementById('quickDate').value;
             var st   = document.getElementById('quickStart').value;
             var et   = document.getElementById('quickEnd').value;
-            var rate = parseInt(document.getElementById('eventRate').value)||100;
             var selected = [];
             document.querySelectorAll('.evt-coach-chk:checked').forEach(function(cb){ selected.push(cb.value); });
             if(!desc){alert('Please enter an event description.');return;}
             if(!st||!et){alert('Please enter start and end time.');return;}
             if(!date){alert('Please pick a date.');return;}
             if(!selected.length){alert('Please select at least one coach.');return;}
-            // Create one shift per selected coach, already claimed, with custom rate
+            // Create one shift per selected coach with individual rates
             DB.shifts = DB.shifts||[];
             selected.forEach(function(ck){
+              var rateInput = document.querySelector('.evt-coach-rate[data-ck="'+ck+'"]');
+              var coachRate = rateInput ? (parseInt(rateInput.value)||COACH_RATES[ck]||100) : (COACH_RATES[ck]||100);
               DB.shifts.push({
                 id: uid(),
                 coach: ck,
@@ -1497,7 +1510,7 @@ function renderScheduleAdmin(){
                 endTime: et,
                 special: true,
                 description: desc,
-                eventRate: rate
+                eventRate: coachRate
               });
             });
             saveShifts();
@@ -2030,6 +2043,11 @@ function renderPayroll(){
   console.log('Payroll debug - all shifts:', allShifts.length, 'claimed:', claimedShifts.length);
   claimedShifts.forEach(function(s){ console.log('  shift:', s.id, 'coach:', s.coach, 'date:', s.date, 'inPeriod:', inPayrollPeriod(s.date, yr, mo)); });
 
+  // Add additional payments to grand total
+  var addlTotal = 0;
+  var addlMap = (DB.payrollAddl||{})[selMonth]||{};
+  Object.values(addlMap).forEach(function(v){ addlTotal += (parseInt(v)||0); });
+
   var html = '<div class="card"><div class="card-title">💰 Monthly Payroll</div>'
     + '<div style="background:#eff6ff;border:1.5px solid #2563eb;border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:.83rem;color:#1e40af">'
     + '📅 Pay period: <strong>'+periodLabel+'</strong> (26th–25th cycle)</div>'
@@ -2037,25 +2055,37 @@ function renderPayroll(){
     + '<div class="form-row" style="margin:0;flex:1;min-width:180px"><label class="form-label">Select Pay Period (ending month)</label>'
     + '<input type="month" class="form-input" id="payMonthInput" value="'+selMonth+'"></div>'
     + '<div style="text-align:right"><div style="font-size:.78rem;color:var(--sub)">Total payout</div>'
-    + '<div style="font-size:1.8rem;font-weight:900;color:var(--green)">R'+grandTotal.toLocaleString()+'</div>'
+    + '<div style="font-size:1.8rem;font-weight:900;color:var(--green)">R'+(grandTotal+addlTotal).toLocaleString()+'</div>'
     + '<div style="font-size:.75rem;color:var(--sub)">'+periodLabel+'</div></div></div>';
 
   // Per-coach rows
   coachRows.forEach(function(r){
     if(r.total === 0) return; // skip coaches with no shifts this period
+    var addl = ((DB.payrollAddl||{})[selMonth]||{})[r.ck]||0;
+    var totalWithAddl = r.pay + addl;
     html += '<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:10px;">'
       + '<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;">'
       + '<div style="width:40px;height:40px;border-radius:50%;background:'+r.co.color+';display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1.1rem;color:#fff;flex-shrink:0;">'+r.co.name[0]+'</div>'
       + '<div style="flex:1"><div style="font-weight:700;font-size:1rem;">'+r.co.name+'</div>'
       + '<div style="font-size:.78rem;color:var(--sub);">Rate: R'+r.rate+'/class</div></div>'
-      + '<div style="text-align:right"><div style="font-size:1.4rem;font-weight:900;color:var(--green)">R'+r.pay.toLocaleString()+'</div>'
+      + '<div style="text-align:right">'
+      + '<div style="font-size:1.4rem;font-weight:900;color:var(--green)">R'+totalWithAddl.toLocaleString()+'</div>'
+      + (addl ? '<div style="font-size:.72rem;color:#7c3aed;">incl. R'+addl+' additional</div>' : '')
       + '<div style="font-size:.75rem;color:var(--sub)">'+r.total+' classes</div></div>'
       + '</div>'
-      + '<div class="stat-grid" style="grid-template-columns:repeat(3,1fr);gap:8px;">'
+      + '<div class="stat-grid" style="grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px;">'
       + '<div class="stat-box blue" style="padding:10px;"><div class="stat-num" style="font-size:1.3rem;">'+r.groupCount+'</div><div class="stat-label">Group Shifts</div></div>'
       + '<div class="stat-box gold" style="padding:10px;"><div class="stat-num" style="font-size:1.3rem;">'+r.personalCount+'</div><div class="stat-label">Personal</div></div>'
       + '<div class="stat-box green" style="padding:10px;"><div class="stat-num" style="font-size:1.3rem;">'+r.hrs.toFixed(1)+'</div><div class="stat-label">Hours</div></div>'
-      + '</div></div>';
+      + '</div>'
+      + '<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#f8fafc;border-radius:8px;border:1px solid var(--border);">'
+      + '<span style="font-size:.82rem;color:var(--sub);flex:1;">Additional payment</span>'
+      + '<span style="font-size:.82rem;">R</span>'
+      + '<input type="number" class="addl-pay-input" data-ck="'+r.ck+'" value="'+addl+'" min="0" '
+      + 'style="width:90px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;font-size:.85rem;font-weight:700;background:#fff;">'
+      + '<button class="btn btn-sm addl-pay-btn" data-ck="'+r.ck+'" style="background:#7c3aed;color:#fff;padding:5px 10px;">Save</button>'
+      + '</div>'
+      + '</div>';
   });
 
   // Show message if no shifts at all
@@ -2073,7 +2103,7 @@ function renderPayroll(){
   // Export button
   html += '<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:12px;display:flex;justify-content:space-between;align-items:center;margin-top:8px;">'
     + '<div style="font-weight:700;color:#15803d;">📥 Export Payroll CSV</div>'
-    + '<div style="font-size:1.1rem;font-weight:900;color:var(--green);font-family:monospace;">TOTAL: R'+grandTotal.toLocaleString()+'</div>'
+    + '<div style="font-size:1.1rem;font-weight:900;color:var(--green);font-family:monospace;">TOTAL: R'+(grandTotal+addlTotal).toLocaleString()+'</div>'
     + '</div>'
     + '</div>';
 
@@ -2082,6 +2112,22 @@ function renderPayroll(){
   // Wire month input
   document.getElementById('payMonthInput').addEventListener('change', function(){
     setPayrollMonth(this.value);
+  });
+
+  // Wire additional pay save buttons
+  document.querySelectorAll('.addl-pay-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var ck = this.getAttribute('data-ck');
+      var input = document.querySelector('.addl-pay-input[data-ck="'+ck+'"]');
+      var amount = parseInt(input.value)||0;
+      DB.payrollAddl = DB.payrollAddl||{};
+      DB.payrollAddl[selMonth] = DB.payrollAddl[selMonth]||{};
+      DB.payrollAddl[selMonth][ck] = amount;
+      // Save to Firebase and localStorage
+      fbSet('cfcParkour/payrollAddl', DB.payrollAddl);
+      localSave();
+      renderPayroll();
+    });
   });
 }
 
