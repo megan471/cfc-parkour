@@ -221,9 +221,10 @@ var PLAYGROUPS = [
   {id:'aisj',    label:'AISJ',            color:'#2563eb',emoji:'🏫',classifierLabel:'Grade'},
   {id:'gymnat',  label:'Gymnat',          color:'#059669',emoji:'🤸',classifierLabel:'Age'},
   {id:'personal',label:'Personal Classes',color:'#7c3aed',emoji:'🧍',classifierLabel:'Age',isPersonal:true},
-  {id:'ninjas',  label:'Ninjas',           color:'#dc2626',emoji:'🥷',classifierLabel:'Age'},
+  {id:'ninjas',  label:'Ninjas',          color:'#dc2626',emoji:'🥷',classifierLabel:'Age'},
   {id:'lninjas', label:'Little Ninjas',   color:'#f59e0b',emoji:'🌟',classifierLabel:'Age'},
-  {id:'apex',    label:'Apex',            color:'#0891b2',emoji:'⚡',classifierLabel:'Age'}
+  {id:'apex',    label:'Apex',            color:'#0891b2',emoji:'⚡',classifierLabel:'Age'},
+  {id:'events',  label:'Events',          color:'#db2777',emoji:'🎉',classifierLabel:'Event',isEvent:true}
 ];
 var ANY_DAY_GROUPS = ['ninjas','lninjas','apex'];
 var ALL_SLOTS = {
@@ -1329,7 +1330,7 @@ function renderScheduleAdmin(){
     window._adminPG = null;
     window._adminSlot = null;
 
-    var pgBtns = PLAYGROUPS.filter(function(p){return p.id!=='personal';}).map(function(p){
+    var pgBtns = PLAYGROUPS.map(function(p){
       return '<button class="btn pg-pick-btn" data-pg="'+p.id+'" style="background:'+p.color+'22;color:'+p.color+';border:1.5px solid '+p.color+'44;margin:3px;">'+p.emoji+' '+p.label+'</button>';
     }).join('');
 
@@ -1337,7 +1338,7 @@ function renderScheduleAdmin(){
       return '<option value="'+d+'">'+d+'</option>';
     }).join('');
 
-    var pgOpts = PLAYGROUPS.filter(function(p){return p.id!=='personal';}).map(function(p){
+    var pgOpts = PLAYGROUPS.map(function(p){
       return '<option value="'+p.id+'">'+p.emoji+' '+p.label+'</option>';
     }).join('');
 
@@ -1388,7 +1389,7 @@ function renderScheduleAdmin(){
       +'<button class="btn btn-sm asf-btn" data-asf="all" style="background:#f1f5f9;">All</button>'
       +'<button class="btn btn-sm asf-btn" data-asf="claimed" style="background:#dcfce7;color:#16a34a;">✓ Claimed</button>'
       +'<button class="btn btn-sm asf-btn" data-asf="unclaimed" style="background:#fef3c7;color:#d97706;">⏳ Unclaimed</button>'
-      +PLAYGROUPS.filter(function(p){return p.id!=='personal';}).map(function(p){
+      +PLAYGROUPS.map(function(p){
         return '<button class="btn btn-sm asf-btn" data-asf="'+p.id+'" style="background:'+p.color+'22;color:'+p.color+';">'+p.emoji+' '+p.label+'</button>';
       }).join('')
       +'</div>'
@@ -1405,33 +1406,65 @@ function renderScheduleAdmin(){
         // Show slots
         var slots = ALL_SLOTS[window._adminPG]||[];
         var pg = getPG(window._adminPG);
-        var btnsHtml = slots.filter(function(s){return s.start;}).map(function(s,i){
-          return '<button class="btn slot-btn" data-i="'+i+'" data-day="'+s.day+'" data-start="'+s.start+'" data-end="'+s.end+'" '
-            +'style="background:var(--card);border:1.5px solid var(--border);padding:8px 12px;text-align:left;">'
-            +'<div style="font-weight:700;font-size:.85rem;">'+s.day+'</div>'
-            +'<div style="font-size:.78rem;color:var(--sub);">'+s.start+'–'+s.end+'</div>'
-            +'</button>';
-        }).join('');
-        document.getElementById('slotBtns').innerHTML = btnsHtml;
-        document.getElementById('slotPickerArea').style.display='block';
-        document.getElementById('dateRow').style.display='none';
-        document.getElementById('releaseSlotBtn').style.display='none';
 
-        // Wire slot buttons
-        document.querySelectorAll('.slot-btn').forEach(function(sb){
-          sb.addEventListener('click', function(){
-            document.querySelectorAll('.slot-btn').forEach(function(b){b.style.background='var(--card)';b.style.borderColor='var(--border)';});
-            this.style.background = pg?pg.color+'33':'#2563eb22';
-            this.style.borderColor = pg?pg.color:'#2563eb';
-            window._adminSlot = {
-              day: this.getAttribute('data-day'),
-              start: this.getAttribute('data-start'),
-              end: this.getAttribute('data-end')
-            };
+        // Personal Classes and Events: no fixed slots — show direct time entry
+        if(window._adminPG === 'personal' || window._adminPG === 'events'){
+          var extraFields = window._adminPG === 'events'
+            ? '<div class="form-row" style="margin-top:10px;"><label class="form-label">Event Description</label>'
+              + '<input type="text" class="form-input" id="eventDesc" placeholder="e.g. Birthday party, School demo, Competition..."></div>'
+            : '';
+          document.getElementById('slotBtns').innerHTML =
+            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px;">'
+            + '<div><label class="form-label">Day</label>'
+            + '<select class="form-select" id="quickDay">'
+            + ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].map(function(d){return '<option>'+d+'</option>';}).join('')
+            + '</select></div>'
+            + '<div><label class="form-label">Start Time</label><input type="time" class="form-input" id="quickStart"></div>'
+            + '<div><label class="form-label">End Time</label><input type="time" class="form-input" id="quickEnd"></div>'
+            + '</div>' + extraFields
+            + '<button class="btn" style="background:'+pg.color+';color:#fff;margin-top:10px;width:100%;" id="quickSlotConfirm">✓ Use This Time</button>';
+          document.getElementById('slotPickerArea').style.display='block';
+          document.getElementById('dateRow').style.display='none';
+          document.getElementById('releaseSlotBtn').style.display='none';
+          document.getElementById('quickSlotConfirm').addEventListener('click', function(){
+            var d = document.getElementById('quickDay').value;
+            var s = document.getElementById('quickStart').value;
+            var e = document.getElementById('quickEnd').value;
+            var desc = document.getElementById('eventDesc') ? document.getElementById('eventDesc').value : '';
+            if(!s||!e){alert('Please enter start and end time.');return;}
+            window._adminSlot = {day:d, start:s, end:e, description:desc};
             document.getElementById('dateRow').style.display='block';
             document.getElementById('releaseSlotBtn').style.display='block';
           });
-        });
+        } else {
+          var btnsHtml = slots.filter(function(s){return s.start;}).map(function(s,i){
+            return '<button class="btn slot-btn" data-i="'+i+'" data-day="'+s.day+'" data-start="'+s.start+'" data-end="'+s.end+'" '
+              +'style="background:var(--card);border:1.5px solid var(--border);padding:8px 12px;text-align:left;">'
+              +'<div style="font-weight:700;font-size:.85rem;">'+s.day+'</div>'
+              +'<div style="font-size:.78rem;color:var(--sub);">'+s.start+'–'+s.end+'</div>'
+              +'</button>';
+          }).join('') || '<div style="color:var(--sub);font-size:.85rem;">No fixed slots — use Custom One-Off Shift below.</div>';
+          document.getElementById('slotBtns').innerHTML = btnsHtml;
+          document.getElementById('slotPickerArea').style.display='block';
+          document.getElementById('dateRow').style.display='none';
+          document.getElementById('releaseSlotBtn').style.display='none';
+
+          // Wire slot buttons
+          document.querySelectorAll('.slot-btn').forEach(function(sb){
+            sb.addEventListener('click', function(){
+              document.querySelectorAll('.slot-btn').forEach(function(b){b.style.background='var(--card)';b.style.borderColor='var(--border)';});
+              this.style.background = pg?pg.color+'33':'#2563eb22';
+              this.style.borderColor = pg?pg.color:'#2563eb';
+              window._adminSlot = {
+                day: this.getAttribute('data-day'),
+                start: this.getAttribute('data-start'),
+                end: this.getAttribute('data-end')
+              };
+              document.getElementById('dateRow').style.display='block';
+              document.getElementById('releaseSlotBtn').style.display='block';
+            });
+          });
+        }
       });
     });
 
@@ -1453,6 +1486,7 @@ function renderScheduleAdmin(){
         endTime: slot.end,
         special: true
       };
+      if(slot.description) newShift.description = slot.description;
       DB.shifts = DB.shifts||[];
       DB.shifts.push(newShift);
       saveShifts();
@@ -1531,9 +1565,11 @@ function buildAdminSessionList(filter){
       ? '<span style="background:'+cl.color+'22;color:'+cl.color+';padding:2px 8px;border-radius:20px;font-size:.72rem;font-weight:700;">✓ '+cl.name+'</span>'
       : '<span style="background:#fef3c7;color:#d97706;padding:2px 8px;border-radius:20px;font-size:.72rem;font-weight:700;">⏳ Unclaimed</span>';
 
+    var pgLabel = pg ? pg.emoji+' '+pg.label : s.playgroup;
+    if(s.description) pgLabel += ' <span style="font-size:.72rem;color:#db2777;font-weight:600;">— '+s.description+'</span>';
     html += '<tr>'
       + '<td>'+badge+'</td>'
-      + '<td>'+(pg ? pg.emoji+' '+pg.label : s.playgroup)+'</td>'
+      + '<td>'+pgLabel+'</td>'
       + '<td>'+(s.date||'—')+'</td>'
       + '<td>'+s.day+'</td>'
       + '<td style="font-weight:600;color:#2563eb;">'+(s.startTime||'')+'–'+(s.endTime||'')+'</td>'
@@ -2234,6 +2270,7 @@ function renderCoachPortal(){
           +'<div style="flex:1;">'
           +(isToday?'<span style="background:#fef3c7;color:#d97706;font-size:.7rem;font-weight:700;padding:1px 6px;border-radius:10px;margin-right:4px;">TODAY</span>':'')
           +'<span style="font-weight:700;">'+(pg?pg.emoji+' '+pg.label:s.playgroup)+'</span>'
+          +(s.description ? ' <span style="font-size:.78rem;color:#db2777;font-weight:600;">— '+s.description+'</span>' : '')
           +'<div style="font-size:.8rem;color:var(--sub);margin-top:2px;">'+s.day+' '+s.date+' · '+s.startTime+'–'+s.endTime+'</div>'
           +'</div>'
           +'<button data-sid="'+s.id+'" class="claim-btn" style="background:#2563eb;color:#fff;border:none;padding:9px 18px;border-radius:8px;font-weight:700;font-size:.82rem;cursor:pointer;flex-shrink:0;">Claim</button>'
@@ -2259,6 +2296,7 @@ function renderCoachPortal(){
         +'<div style="flex:1;">'
         +(isToday?'<span style="background:#fef3c7;color:#d97706;font-size:.7rem;font-weight:700;padding:1px 6px;border-radius:10px;margin-right:4px;">🟡 TODAY</span>':'')
         +'<span style="font-weight:700;">'+(pg?pg.emoji+' '+pg.label:s.playgroup)+'</span>'
+        +(s.description ? ' <span style="font-size:.78rem;color:#db2777;font-weight:600;">— '+s.description+'</span>' : '')
         +'<div style="font-size:.8rem;color:var(--sub);margin-top:2px;">'+s.day+' '+s.date+' · '+s.startTime+'–'+s.endTime+'</div>'
         +'</div>'
         +'<button data-sid="'+s.id+'" class="release-btn" style="background:#fee2e2;color:#dc2626;border:none;padding:7px 14px;border-radius:8px;font-weight:700;font-size:.78rem;cursor:pointer;flex-shrink:0;">Release</button>'
